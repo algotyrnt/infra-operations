@@ -208,6 +208,7 @@ $PYTHON_BIN -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
 pip install boto3
+pip install python-dotenv
 deactivate
 
 chown -R root:root "$VENV_DIR"
