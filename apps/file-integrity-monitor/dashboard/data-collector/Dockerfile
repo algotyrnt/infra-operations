@@ -27,13 +27,14 @@ WORKDIR /app
 # Copy application code
 COPY app/ /app/
 
+# Copy TLS certs into container
+COPY certs/ /app/certs/
+
 # Install Python dependencies and create runtime folder
 RUN pip install --no-cache-dir boto3 mysql-connector-python \
     && mkdir -p /app/centralised_bak \
-    && useradd -r -m -d /home/appuser -s /usr/sbin/nologin appuser \
-    && chown -R appuser:appuser /app
-
-USER appuser
+    && chmod 600 /app/certs/client-key.pem \
+    && chmod 644 /app/certs/ca.pem /app/certs/client-cert.pem
 
 # Run the main Python script
-CMD ["python", "data-collector.py"]
+CMD ["python", "S3toDB.py"]
