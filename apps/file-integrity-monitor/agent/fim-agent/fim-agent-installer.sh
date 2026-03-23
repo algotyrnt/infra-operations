@@ -6,41 +6,50 @@ LOG_FILE="/var/log/fim_install.log"
 mkdir -p "$(dirname "$LOG_FILE")"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-echo "[INFO] Starting FIM Agent One-Click Installer..."
+echo "[INFO] Starting FIM Agent Installer (no git clone required)..."
 
-# ---------------------------
+# --------------------------------------------------
 # Must run as root
-# ---------------------------
+# --------------------------------------------------
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-  echo "[ERROR] Please run as root: sudo bash oneclickinstallation.sh"
+  echo "[ERROR] Please run as root."
+  echo "[ERROR] Example: sudo bash fim-agent-installation.sh"
   exit 1
 fi
 
-# ---------------------------
+# --------------------------------------------------
 # Variables
-# ---------------------------
+# --------------------------------------------------
 FIM_USER="${FIM_USER:-fimuser}"
-FIM_DIR="/home/${FIM_USER}/FIM"
+FIM_GROUP="${FIM_GROUP:-fimuser}"
+FIM_HOME="/home/${FIM_USER}"
+FIM_DIR="${FIM_HOME}/FIM"
 JSON_DIR="${FIM_DIR}/json_dir"
 VENV_DIR="${FIM_DIR}/fimenv"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-AGENT_SRC="${SCRIPT_DIR}/fim-agent.py"
-UPLOADER_SRC="${SCRIPT_DIR}/data-uploader.py"
-CONF_SRC="${SCRIPT_DIR}/fim-agent.conf"
 
 AGENT_DST="${FIM_DIR}/fim-agent.py"
 UPLOADER_DST="${FIM_DIR}/data-uploader.py"
 CONF_DST="${FIM_DIR}/fim-agent.conf"
+ENV_SAMPLE_DST="${FIM_DIR}/.env.sample"
+ENV_DST="${FIM_DIR}/.env"
 
-# Use audit.rules (overwrite after backup)
 AUDIT_RULES_FILE="/etc/audit/rules.d/audit.rules"
 AUDIT_CONF_FILE="/etc/audit/auditd.conf"
 
-# ---------------------------
+SYSTEMD_FIM="/etc/systemd/system/fim.service"
+SYSTEMD_UPLOADER="/etc/systemd/system/data-uploader.service"
+
+# Raw GitHub base path
+RAW_BASE_URL="${RAW_BASE_URL:-https://raw.githubusercontent.com/wso2-open-operations/infra-operations/dev/apps/file-integrity-monitor/agent/fim-agent}"
+
+AGENT_URL="${RAW_BASE_URL}/fim-agent.py"
+UPLOADER_URL="${RAW_BASE_URL}/data-uploader.py"
+CONF_URL="${RAW_BASE_URL}/fim-agent.conf"
+ENV_SAMPLE_URL="${RAW_BASE_URL}/.env.sample"
+
+# --------------------------------------------------
 # Helpers
-# ---------------------------
+# --------------------------------------------------
 backup_file() {
   local f="$1"
   if [[ -f "$f" ]]; then
@@ -48,50 +57,110 @@ backup_file() {
   fi
 }
 
-need_file() {
-  local f="$1"
-  if [[ ! -f "$f" ]]; then
-    echo "[ERROR] Missing required file: $f"
-    echo "       Run this installer from the repo root or ensure the file exists."
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+download_file() {
+  local url="$1"
+  local dest="$2"
+
+  echo "[INFO] Downloading: $url"
+  if command_exists wget; then
+    wget -q --show-progress -O "$dest" "$url"
+  elif command_exists curl; then
+    curl -fL "$url" -o "$dest"
+  else
+    echo "[ERROR] Neither wget nor curl is installed."
+    exit 1
+  fi
+
+  if [[ ! -s "$dest" ]]; then
+    echo "[ERROR] Download failed or file is empty: $dest"
     exit 1
   fi
 }
 
 reload_audit_rules() {
-  echo "[INFO] Loading audit rules..."
-  if command -v augenrules &>/dev/null; then
-    augenrules --load
-  else
-    # Fallback
-    service auditd restart || true
+  echo "[INFO] Reloading audit rules..."
+  if command_exists augenrules; then
+    augenrules --load || true
   fi
-  systemctl restart auditd
+  systemctl restart auditd || true
 }
 
-# ---------------------------
-# 1. Create user (nologin) if not exists
-# ---------------------------
-if ! id "$FIM_USER" &>/dev/null; then
-  echo "[INFO] Creating user $FIM_USER..."
-  useradd -m -s /usr/sbin/nologin "$FIM_USER"
-else
-  echo "[INFO] User $FIM_USER already exists"
-fi
-
-# ---------------------------
-# 2. Install packages
-# ---------------------------
-echo "[INFO] Installing packages..."
+# --------------------------------------------------
+# 1. Install required packages
+# --------------------------------------------------
+echo "[INFO] Installing required packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y auditd audispd-plugins ca-certificates python3 python3-pip
+apt-get install -y \
+  auditd \
+  audispd-plugins \
+  ca-certificates \
+  python3 \
+  python3-pip \
+  wget \
+  curl
 
 systemctl enable auditd
 systemctl restart auditd
 
-# ---------------------------
-# 3. Configure audit.rules (overwrite /etc/audit/rules.d/audit.rules)
-# ---------------------------
+# --------------------------------------------------
+# 2. Create service user
+# --------------------------------------------------
+if ! id "$FIM_USER" >/dev/null 2>&1; then
+  echo "[INFO] Creating user: $FIM_USER"
+  useradd -m -s /usr/sbin/nologin "$FIM_USER"
+else
+  echo "[INFO] User already exists: $FIM_USER"
+fi
+
+# --------------------------------------------------
+# 3. Create application directories
+# --------------------------------------------------
+echo "[INFO] Creating application directories..."
+mkdir -p "$FIM_DIR"
+mkdir -p "$JSON_DIR"
+
+chown -R root:root "$FIM_DIR"
+chmod 0755 "$FIM_DIR"
+chmod 0755 "$JSON_DIR"
+
+# --------------------------------------------------
+# 4. Download project files directly from GitHub
+# --------------------------------------------------
+echo "[INFO] Downloading FIM agent files..."
+
+download_file "$AGENT_URL" "$AGENT_DST"
+download_file "$UPLOADER_URL" "$UPLOADER_DST"
+download_file "$CONF_URL" "$CONF_DST"
+download_file "$ENV_SAMPLE_URL" "$ENV_SAMPLE_DST"
+
+chmod 0644 "$AGENT_DST"
+chmod 0644 "$UPLOADER_DST"
+chmod 0600 "$CONF_DST"
+chmod 0600 "$ENV_SAMPLE_DST"
+
+# Create .env from .env.sample only if .env does not exist
+if [[ ! -f "$ENV_DST" ]]; then
+  echo "[INFO] Creating .env from .env.sample"
+  cp "$ENV_SAMPLE_DST" "$ENV_DST"
+  chmod 0600 "$ENV_DST"
+else
+  echo "[INFO] Existing .env found, leaving it unchanged"
+fi
+
+# Ensure uploader user can read needed files
+chown root:root "$AGENT_DST" "$UPLOADER_DST" "$CONF_DST" "$ENV_SAMPLE_DST" "$ENV_DST"
+chmod 0644 "$AGENT_DST" "$UPLOADER_DST"
+chmod 0640 "$CONF_DST" "$ENV_SAMPLE_DST" "$ENV_DST"
+chgrp "$FIM_GROUP" "$CONF_DST" "$ENV_SAMPLE_DST" "$ENV_DST" || true
+
+# --------------------------------------------------
+# 5. Configure audit rules
+# --------------------------------------------------
 backup_file "$AUDIT_RULES_FILE"
 
 echo "[INFO] Writing audit rules to $AUDIT_RULES_FILE..."
@@ -116,19 +185,17 @@ cat > "$AUDIT_RULES_FILE" <<'EOF'
 -w /usr/share/ -p wa -k usr_share_watch
 EOF
 
-chmod 640 "$AUDIT_RULES_FILE"
+chmod 0640 "$AUDIT_RULES_FILE"
 chown root:root "$AUDIT_RULES_FILE"
 
 reload_audit_rules
 
-# ---------------------------
-# 4. Configure auditd.conf (OPTIONAL)
-# NOTE: Overwriting this file can break on some systems if keys differ.
-# Keep it only if you know your target OS versions support these keys.
-# ---------------------------
+# --------------------------------------------------
+# 6. Configure auditd.conf
+# --------------------------------------------------
 backup_file "$AUDIT_CONF_FILE"
 
-echo "[INFO] Updating auditd.conf..."
+echo "[INFO] Writing auditd configuration to $AUDIT_CONF_FILE..."
 cat > "$AUDIT_CONF_FILE" <<'EOF'
 local_events = yes
 write_logs = yes
@@ -153,72 +220,47 @@ disk_full_action = SUSPEND
 disk_error_action = SUSPEND
 EOF
 
-systemctl restart auditd
+systemctl restart auditd || true
 
-# ---------------------------
-# 5. Create directories
-# ---------------------------
-echo "[INFO] Creating FIM directories..."
-mkdir -p "$JSON_DIR"
-chown -R "$FIM_USER:$FIM_USER" "$FIM_DIR" || true
-chmod 750 "$FIM_DIR" || true
-chmod 750 "$JSON_DIR" || true
-
-# ---------------------------
-# 6. Copy agent files to target location (repo remains intact)
-# ---------------------------
-need_file "$AGENT_SRC"
-need_file "$UPLOADER_SRC"
-need_file "$CONF_SRC"
-
-echo "[INFO] Copying FIM agent files to $FIM_DIR..."
-install -m 0644 -o root -g root "$AGENT_SRC" "$AGENT_DST"
-install -m 0644 -o root -g root "$UPLOADER_SRC" "$UPLOADER_DST"
-install -m 0600 -o root -g root "$CONF_SRC" "$CONF_DST"
-
-# If your services run as root, root owning the dir is fine:
-chown -R root:root "$FIM_DIR"
-chmod 0755 "$FIM_DIR"
-chmod 0755 "$JSON_DIR"
-
-# ---------------------------
+# --------------------------------------------------
 # 7. Setup Python virtual environment
-# ---------------------------
+# --------------------------------------------------
 echo "[INFO] Setting up Python virtual environment..."
 
-# Find best python
 PYTHON_BIN="python3"
 for ver in 3.12 3.11 3.10 3.9 3.8; do
-  if command -v "python${ver}" &>/dev/null; then
+  if command_exists "python${ver}"; then
     PYTHON_BIN="python${ver}"
     break
   fi
 done
+
 echo "[INFO] Using Python interpreter: $PYTHON_BIN"
 
-PYTHON_MAJOR_MINOR=$($PYTHON_BIN -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PYTHON_MAJOR_MINOR="$($PYTHON_BIN -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 VENV_PKG="python${PYTHON_MAJOR_MINOR}-venv"
+
 echo "[INFO] Installing venv package: $VENV_PKG"
 apt-get install -y "$VENV_PKG"
 
 rm -rf "$VENV_DIR"
-$PYTHON_BIN -m venv "$VENV_DIR"
+"$PYTHON_BIN" -m venv "$VENV_DIR"
 
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
-pip install boto3
-pip install python-dotenv
+pip install boto3 python-dotenv
 deactivate
 
 chown -R root:root "$VENV_DIR"
+chmod -R 0755 "$VENV_DIR"
 
-# ---------------------------
+# --------------------------------------------------
 # 8. Create systemd services
-# ---------------------------
+# --------------------------------------------------
 echo "[INFO] Creating systemd services..."
 
-cat > /etc/systemd/system/fim.service <<EOF
+cat > "$SYSTEMD_FIM" <<EOF
 [Unit]
 Description=File Integrity Monitoring Service
 After=network.target auditd.service
@@ -246,7 +288,7 @@ TasksMax=100
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/data-uploader.service <<EOF
+cat > "$SYSTEMD_UPLOADER" <<EOF
 [Unit]
 Description=Upload to S3 Service
 After=network.target
@@ -258,8 +300,8 @@ ExecStart=${VENV_DIR}/bin/python ${FIM_DIR}/data-uploader.py
 WorkingDirectory=${FIM_DIR}
 Restart=always
 RestartSec=5
-User=fimuser
-Group=fimuser
+User=root
+Group=root
 NoNewPrivileges=true
 PrivateTmp=true
 
@@ -267,18 +309,64 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
+chmod 0644 "$SYSTEMD_FIM" "$SYSTEMD_UPLOADER"
 systemctl daemon-reload
 
-# ---------------------------
-# 9. Enable & start services
-# ---------------------------
-echo "[INFO] Enabling and starting services..."
-systemctl enable --now fim.service
-systemctl enable --now data-uploader.service
+# --------------------------------------------------
+# 9. Do NOT start services automatically
+# --------------------------------------------------
+echo "[INFO] Services created, but not started yet."
+echo "[INFO] This is intentional because credentials must be added first."
 
-echo "[INFO] Showing service status:"
-systemctl --no-pager --full status fim.service || true
-systemctl --no-pager --full status data-uploader.service || true
+# --------------------------------------------------
+# 10. Final instructions
+# --------------------------------------------------
+cat <<EOF
 
-echo "[INFO] Installation complete."
-echo "[INFO] Logs: $LOG_FILE"
+============================================================
+FIM Agent installation completed successfully.
+============================================================
+
+Files installed to:
+  ${FIM_DIR}
+
+Downloaded files:
+  ${AGENT_DST}
+  ${UPLOADER_DST}
+  ${CONF_DST}
+  ${ENV_SAMPLE_DST}
+  ${ENV_DST}
+
+IMPORTANT:
+Before starting the services, update your credentials in:
+  1. ${CONF_DST}
+  2. ${ENV_DST}
+
+Suggested commands:
+  nano ${CONF_DST}
+  nano ${ENV_DST}
+
+After updating credentials, run:
+  systemctl enable fim.service
+  systemctl enable data-uploader.service
+  systemctl start fim.service
+  systemctl start data-uploader.service
+
+Check status:
+  systemctl status fim.service
+  systemctl status data-uploader.service
+
+View logs:
+  journalctl -u fim.service -f
+  journalctl -u data-uploader.service -f
+
+Installer log:
+  ${LOG_FILE}
+
+Notes:
+- Existing audit config files were backed up before replacement.
+- Services were not started automatically.
+- If your Python code expects only one config source, keep credentials there consistently.
+
+============================================================
+EOF
