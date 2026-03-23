@@ -259,6 +259,9 @@ deactivate
 chown -R root:root "$VENV_DIR"
 chmod -R 0755 "$VENV_DIR"
 
+echo "[INFO] Patching JSON_DIR in fim-agent.conf..."
+sed -i "s|^JSON_DIR\s*=.*|JSON_DIR = ${JSON_DIR}|" "$CONF_DST"
+
 # --------------------------------------------------
 # 8. Create systemd services
 # --------------------------------------------------
@@ -272,6 +275,8 @@ Wants=auditd.service
 
 [Service]
 Type=simple
+Environment=FIM_DIR=${FIM_DIR}
+Environment=BACKUP_DIR=${FIM_HOME}/BACKUP
 ExecStart=${VENV_DIR}/bin/python ${FIM_DIR}/fim-agent.py
 WorkingDirectory=${FIM_DIR}
 Restart=always
