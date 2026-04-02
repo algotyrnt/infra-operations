@@ -1,6 +1,6 @@
 # File Integrity Monitor (FIM)
 
-**File Integrity Monitor (FIM)** is an open-source product developed by the WSO2 Infra team to improve operational efficiency, support auditing and evidence generation, and assist with server troubleshooting. This is an ongoing development project, and improved versions will be released as the solution continues to evolve.
+>**Note**: This is an **open-source project** developed by the WSO2 Infra team to improve operational efficiency, support auditing and evidence generation, and assist with server troubleshooting. Please note that this is an **ongoing development project**, and improved versions will be released in the future. This implementation represents the outcome of our current research efforts.
 
 FIM provides a complete workflow for detecting, collecting, and reviewing file changes across Linux environments. The product combines two main components: **FIM Agent** and **FIM Dashboard**.
 
