@@ -3,7 +3,7 @@
 **Note**: This is an **open-source project** developed by the WSO2 Infra team to improve operational efficiency, support auditing and evidence generation, and assist with server troubleshooting. Please note that this is an **ongoing development project**, and improved versions will be released in the future. This implementation represents the outcome of our current research efforts.
 
 
->>**Please review the FIM-agent README.md file beforehand.**
+>**Please review the FIM-agent README.md file beforehand.**
 
 The File Integrity Monitor (FIM) Dashboard is a centralized component used to collect, store, and visualize FIM results. It is built with two Docker containers:
 
