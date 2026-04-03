@@ -1,6 +1,6 @@
 # File Integrity Monitor Agent (FIM-Agent)
 
-**Note**: This is an **open-source project** developed by the WSO2 Infra team to improve operational efficiency, support auditing and evidence generation, and assist with server troubleshooting. Please note that this is an **ongoing development project**, and improved versions will be released in the future. This implementation represents the outcome of our current research efforts.
+>**Note**: This is an **open-source project** developed by the WSO2 Infra team to improve operational efficiency, support auditing and evidence generation, and assist with server troubleshooting. Please note that this is an **ongoing development project**, and improved versions will be released in the future. This implementation represents the outcome of our current research efforts.
 
 
 The File Integrity Monitor (FIM) Agent is a host-based monitoring component that detects and records file changes by leveraging Linux `auditd` logs. Its primary purpose is to transform low-level audit events into structured, meaningful file integrity records that can be used for security monitoring, operational auditing, and forensic analysis.
@@ -165,6 +165,20 @@ AWS_SECRET_ACCESS_KEY=
 AWS_REGION=
 BUCKET_NAME=
 ```
+
+##### Important Configuration Parameters
+
+The following parameters in `fim-agent.conf` are important because they directly affect the quality, safety, and manageability of FIM monitoring:
+
+- **`EXCLUDED_EXTENSIONS = .cert,.pem,.jks,.pfx,.p12,.pkcs8,.der`**  
+  This setting excludes sensitive and non-text-based security files such as certificates, keystores, and binary key formats from backup and diff-related handling. This helps avoid unnecessary processing, prevents meaningless diff generation for binary content, and reduces the risk of handling sensitive security material unnecessarily.
+
+- **`LOGS_MONITORING_ENABLE = NO`**  
+  This setting disables log file monitoring. It is important because log files change very frequently and can generate excessive noise, making it harder to focus on meaningful file integrity events. Keeping this as `NO` helps reduce unwanted events and improves the usefulness of monitoring results.
+
+- **`FILE_SIZE_MB = 10`**  
+  This setting defines the maximum JSON file size allowed for upload to S3. It is important because it helps control storage and transfer size, avoids oversized uploads, and ensures the upload process remains manageable and efficient.
+
 ### 5. Enable and start the services
 
 After updating the configuration, enable and start both services:
