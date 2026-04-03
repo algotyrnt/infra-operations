@@ -11,7 +11,9 @@ As part of a research initiative, we developed **File Integrity Monitor (FIM)** 
 
 The main objective of FIM is to identify unauthorized or unexpected file system changes and convert low-level audit activity into meaningful, reviewable integrity records. This helps strengthen security operations by highlighting potential breaches, malware activity, insider threats, misconfigurations, and unauthorized administrative actions.
 
-A key strength of this solution is its ability to accurately trace the originating user even when file system modifications are performed through elevated or switched root privileges. This gives teams clearer accountability and visibility during investigations, which can be difficult to achieve with some existing commercial products. At the same time, the solution provides a practical and cost-effective approach for organizations that need strong monitoring, auditing, and compliance support.
+> **A key strength of this solution is its ability to accurately trace the originating user even when file system modifications are performed through elevated or switched root privileges.**
+
+This gives teams clearer accountability and visibility during investigations, which can be difficult to achieve with some existing commercial products. At the same time, the solution provides a practical and cost-effective approach for organizations that need strong monitoring, auditing, and compliance support.
 
 FIM provides a complete end-to-end workflow through two main components:
 
@@ -190,26 +192,32 @@ This makes the product useful both for day-to-day operations and for security-fo
 ## Core Product Capabilities
 
 ```mermaid
-mindmap
-  root((FIM Product))
-    Detect
-      File changes on Linux hosts
-      Audit-based monitoring
-    Transform
-      Correlate raw audit records
-      Generate structured events
-      Produce diffs where available
-    Transport
-      Create JSON results
-      Upload to S3
-    Centralize
-      Collect results from many machines
-      Store in one database
-    Visualize
-      Dashboard access
-      Filtering
-      Detailed review
-      Export
+flowchart LR
+    A[FIM Product]
+
+    A --> B[Detect]
+    A --> C[Transform]
+    A --> D[Transport]
+    A --> E[Centralize]
+    A --> F[Visualize]
+
+    B --> B1[File changes on Linux hosts]
+    B --> B2[Audit-based monitoring]
+
+    C --> C1[Correlate raw audit records]
+    C --> C2[Generate structured events]
+    C --> C3[Produce diffs where available]
+
+    D --> D1[Create JSON results]
+    D --> D2[Upload to S3]
+
+    E --> E1[Collect results from many machines]
+    E --> E2[Store in one database]
+
+    F --> F1[Dashboard access]
+    F --> F2[Filtering]
+    F --> F3[Detailed review]
+    F --> F4[Export]
 ```
 
 ---
