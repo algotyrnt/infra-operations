@@ -117,35 +117,52 @@ flowchart TB
 
 ## How the Product Works
 
-The product has two main parts: **fim-agent** and **dashboard**.
+The File Integrity Monitor product is built around two main components: **fim-agent** and **dashboard**.
 
 ### fim-agent
 
-The **fim-agent** runs on monitored Linux hosts and watches file-related system activity using Linux audit logs.
+The **fim-agent** runs on monitored Linux hosts and uses Linux `auditd` logs to identify important file-related activity.
 
-Its role is to:
+Its main responsibilities are to:
 
-* detect relevant file changes
-* correlate raw audit records into meaningful events
-* identify the affected file and execution context
-* preserve useful evidence such as metadata and diffs
-* generate structured JSON output
-* upload the generated results for centralized processing
+- detect relevant file changes
+- correlate raw audit records into meaningful file events
+- identify the affected file, execution context, and responsible user or process
+- preserve useful evidence such as metadata, backups, and diffs where applicable
+- generate structured JSON event files
+- upload the generated results for centralized processing
 
-In simple terms, the agent transforms low-level system audit activity into understandable file integrity records.
+In simple terms, the **fim-agent** converts low-level audit activity on each monitored server into understandable file integrity records.
 
 ### dashboard
 
-The **dashboard** is the centralized product layer used to collect and review all FIM results.
+The **dashboard** is the centralized component used to collect, store, and review FIM results.
 
-Its role is to:
+Its main responsibilities are to:
 
-* read JSON result files from Amazon S3
-* process and store them in a central database
-* provide a web-based view of collected file integrity events
-* support filtering, review, and export for operational use
+- read JSON result files from Amazon S3
+- process and store extracted event data in a central database
+- provide a web-based interface for reviewing collected FIM results
+- support filtering, investigation, and export for operational use
 
-In simple terms, the dashboard turns distributed JSON result files into a centralized monitoring and analysis experience.
+In simple terms, the **dashboard** turns distributed JSON event files into a centralized monitoring and analysis platform.
+
+### FIM Setup Configuration
+
+To set up the full FIM product, the first step is to create an **Amazon S3 bucket**. This bucket acts as the connection point between the **fim-agent** and the **dashboard**, because agents upload generated JSON event files to S3 and the dashboard later collects those files for centralized processing.
+
+After preparing the S3 bucket, identify the Linux servers that need to be monitored and install the **fim-agent** on those servers by following the instructions in the `fim-agent` README.
+
+Next, select a centralized server that will host the **dashboard** component. Then, using the documentation in the `dashboard` folder, install and configure the dashboard on that centralized server.
+
+In summary, the setup flow is:
+
+1. Create the Amazon S3 bucket
+2. Configure the required AWS details
+3. Install **fim-agent** on all monitoring servers
+4. Choose a centralized server for the **dashboard**
+5. Install and configure the **dashboard**
+6. Verify the end-to-end flow from monitored hosts to centralized review
 
 ---
 
@@ -222,48 +239,6 @@ flowchart LR
 
 ---
 
-## Product Value
-
-The File Integrity Monitor product provides value in three main areas:
-
-### Detection
-
-It identifies when monitored files are changed on Linux systems.
-
-### Evidence
-
-It keeps structured records about what happened, including context and change details where available.
-
-### Centralized Visibility
-
-It provides a single place to review results from multiple machines instead of checking systems one by one.
-
----
-
-## Product Components Relationship
-
-```mermaid
-flowchart LR
-    subgraph Edge[Edge / Monitored Hosts]
-        A[fim-agent]
-    end
-
-    subgraph Transfer[Transfer Layer]
-        B[JSON Results]
-        C[Amazon S3]
-    end
-
-    subgraph Center[Central Analysis]
-        D[dashboard]
-    end
-
-    A --> B
-    B --> C
-    C --> D
-```
-
----
-
 ## Operational View
 
 ```mermaid
@@ -298,21 +273,6 @@ flowchart TB
     A4 --> S3
 
     S3 --> D
-```
-
----
-
-## Simple Explanation
-
-You can think of the product like this:
-
-* **fim-agent** is the part that runs on each server and prepares file change results
-* **dashboard** is the part that collects all results and shows them in one place
-
-So the overall product flow is:
-
-```text
-File change on server -> fim-agent -> JSON result -> S3 -> dashboard -> central review
 ```
 
 ---
