@@ -182,7 +182,10 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 	}
 
 	// Add all recipients (To + CC + BCC).
-	allRecipients := append(append(msg.To, msg.CC...), msg.BCC...)
+	allRecipients := make([]string, 0, len(msg.To)+len(msg.CC)+len(msg.BCC))
+	allRecipients = append(allRecipients, msg.To...)
+	allRecipients = append(allRecipients, msg.CC...)
+	allRecipients = append(allRecipients, msg.BCC...)
 	for _, rcpt := range allRecipients {
 		envelopeRcpt := rcpt
 		if parsed, err := mail.ParseAddress(rcpt); err == nil {
