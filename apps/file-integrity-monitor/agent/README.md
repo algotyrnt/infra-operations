@@ -212,10 +212,7 @@ Configuration must be completed before starting the services.
 Ensure the S3 bucket details and AWS credentials are correctly provided in both configuration sources if required by your deployment model.
 Existing audit configuration files may be backed up before replacement during installation.
 
-A couple of improvements I made while inserting it:
-- fixed the grammar in the backup paragraph
-- removed the broken `:contentReference...` text
-- added a missing `## Repository contents` heading for cleaner structure
+
 
 
 
