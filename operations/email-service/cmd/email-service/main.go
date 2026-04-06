@@ -27,13 +27,13 @@ import (
 )
 
 func main() {
-	loadDotEnv(".env")
+	env := loadDotEnv(".env")
 
-	hostname := mustEnv("SMTP_HOSTNAME")
-	username := mustEnv("SMTP_USERNAME")
-	password := mustEnv("SMTP_PASSWORD")
-	smtpPort := envOrDefault("SMTP_PORT", "587")
-	httpPort := envOrDefault("PORT", "9090")
+	hostname := mustEnv(env, "SMTP_HOSTNAME")
+	username := mustEnv(env, "SMTP_USERNAME")
+	password := mustEnv(env, "SMTP_PASSWORD")
+	smtpPort := envOrDefault(env, "SMTP_PORT", "587")
+	httpPort := envOrDefault(env, "PORT", "9090")
 
 	client := smtpclient.New(smtpclient.Config{
 		Hostname: hostname,
@@ -63,32 +63,32 @@ func main() {
 	}
 }
 
-// mustEnv returns the value of the named environment variable or exits with
+// mustEnv returns the value of the named config key or exits with
 // a clear error message if it is not set.
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		slog.Error("required environment variable not set", "key", key)
+func mustEnv(env map[string]string, key string) string {
+	v, ok := env[key]
+	if !ok || v == "" {
+		slog.Error("required config not set in .env", "key", key)
 		os.Exit(1)
 	}
 	return v
 }
 
-// envOrDefault returns the value of the named environment variable, or
+// envOrDefault returns the value of the named config key, or
 // defaultValue if it is not set.
-func envOrDefault(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
+func envOrDefault(env map[string]string, key, defaultValue string) string {
+	if v, ok := env[key]; ok && v != "" {
 		return v
 	}
 	return defaultValue
 }
 
-// loadDotEnv reads KEY=VALUE pairs from the named file to the environment.
-// It skips existing keys so that real environment variables win.
-func loadDotEnv(filename string) {
+// loadDotEnv reads KEY=VALUE pairs from the named file.
+func loadDotEnv(filename string) map[string]string {
+	env := make(map[string]string)
 	f, err := os.Open(filename)
 	if err != nil {
-		return // file absent — not an error
+		return env // file absent — return empty map
 	}
 	defer f.Close()
 
@@ -107,9 +107,7 @@ func loadDotEnv(filename string) {
 		key := strings.TrimSpace(line[:idx])
 		value := strings.TrimSpace(line[idx+1:])
 
-		// Only set if not already present in the environment.
-		if os.Getenv(key) == "" {
-			os.Setenv(key, value) //nolint:errcheck
-		}
+		env[key] = value
 	}
+	return env
 }
