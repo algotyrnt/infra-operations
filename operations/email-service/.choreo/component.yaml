@@ -1,0 +1,8 @@
+schemaVersion: 1.0
+type: service
+endpoints:
+  - name: email-service
+    port: 9090
+    type: REST
+    networkVisibility: Public
+    schemaFilePath: openapi.yaml

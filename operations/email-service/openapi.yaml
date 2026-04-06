@@ -1,0 +1,154 @@
+openapi: 3.0.3
+info:
+  title: Email Service API
+  description: A microservice to dispatch emails via SMTP and check SMTP server connectivity.
+  version: 1.0.0
+servers:
+  - url: http://localhost:9090
+    description: Local development server
+paths:
+  /health-check:
+    get:
+      summary: Health check endpoint
+      description: Pings the upstream SMTP server to confirm connectivity and health status.
+      responses:
+        '200':
+          description: Service is healthy and SMTP connectivity is successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '405':
+          description: Method Not Allowed
+        '503':
+          description: Service is unhealthy (SMTP server is unreachable).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /send-email:
+    post:
+      summary: Send an email
+      description: Dispatches an email using the configured SMTP server. Supports base64 encoded HTML templates and attachments.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+      responses:
+        '200':
+          description: Email successfully dispatched.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseMessage'
+        '400':
+          description: Bad request (validation failed or missing required fields).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseMessage'
+        '405':
+          description: Method Not Allowed
+        '500':
+          description: Internal server error (failed to dispatch email).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseMessage'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: The health status ('healthy' or 'unhealthy')
+          example: healthy
+      required:
+        - status
+
+    ResponseMessage:
+      type: object
+      properties:
+        message:
+          type: string
+          description: A human-readable message detailing the outcome.
+          example: Email sent successfully
+      required:
+        - message
+
+    EmailAttachment:
+      type: object
+      properties:
+        contentName:
+          type: string
+          description: The file name shown to the recipient.
+          example: document.pdf
+        contentType:
+          type: string
+          description: The MIME type of the attachment.
+          example: application/pdf
+        attachment:
+          type: string
+          description: The raw file bytes, encoded as a base64 string.
+          example: JVBERi0xLjcKCjEgMCBvYmogICUgZW50cnkgcG9pbnQKPDwKICAvVHlwZSAvQ2F0YWxvZwogIC9QYWdlcyAyIDAgUgo+PgplbmRvYmoK...
+      required:
+        - contentName
+        - contentType
+        - attachment
+
+    EmailRequest:
+      type: object
+      properties:
+        to:
+          type: array
+          description: List of primary recipient email addresses.
+          items:
+            type: string
+            format: email
+          example: ["john.doe@example.com"]
+        cc:
+          type: array
+          description: Optional list of carbon-copy recipients.
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          description: Optional list of blind carbon-copy recipients.
+          items:
+            type: string
+            format: email
+        replyTo:
+          type: array
+          description: Optional list of reply-to addresses.
+          items:
+            type: string
+            format: email
+        from:
+          type: string
+          format: email
+          description: The sender email address.
+          example: noreply@example.com
+        subject:
+          type: string
+          description: The email subject line.
+          example: Welcome to our service!
+        template:
+          type: string
+          description: The base64-encoded HTML body of the email.
+          example: PGgxPkhlbGxvIFdvcmxkPC9oMT4=
+        attachments:
+          type: array
+          description: Optional list of file attachments.
+          items:
+            $ref: '#/components/schemas/EmailAttachment'
+      required:
+        - to
+        - from
+        - subject
+        - template
