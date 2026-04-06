@@ -79,9 +79,12 @@ func main() {
 // mustEnv returns the value of the named config key or exits with
 // a clear error message if it is not set.
 func mustEnv(env map[string]string, key string) string {
-	v, ok := env[key]
-	if !ok || v == "" {
-		slog.Error("required config not set in .env", "key", key)
+	v := os.Getenv(key)
+	if v == "" {
+		v = env[key]
+	}
+	if v == "" {
+		slog.Error("required config not set", "key", key)
 		os.Exit(1)
 	}
 	return v
@@ -90,7 +93,11 @@ func mustEnv(env map[string]string, key string) string {
 // envOrDefault returns the value of the named config key, or
 // defaultValue if it is not set.
 func envOrDefault(env map[string]string, key, defaultValue string) string {
-	if v, ok := env[key]; ok && v != "" {
+	v := os.Getenv(key)
+	if v == "" {
+		v = env[key]
+	}
+	if v != "" {
 		return v
 	}
 	return defaultValue
@@ -99,8 +106,11 @@ func envOrDefault(env map[string]string, key, defaultValue string) string {
 // envOrDefaultDuration returns the parsed duration of the named config key, or
 // defaultValue if it is not set or fails to parse.
 func envOrDefaultDuration(env map[string]string, key string, defaultValue time.Duration) time.Duration {
-	v, ok := env[key]
-	if !ok || v == "" {
+	v := os.Getenv(key)
+	if v == "" {
+		v = env[key]
+	}
+	if v == "" {
 		return defaultValue
 	}
 	d, err := time.ParseDuration(v)
@@ -114,8 +124,11 @@ func envOrDefaultDuration(env map[string]string, key string, defaultValue time.D
 // envOrDefaultInt64 parses the named config key as an int64, or
 // defaultValue if it is not set or fails to parse.
 func envOrDefaultInt64(env map[string]string, key string, defaultValue int64) int64 {
-	v, ok := env[key]
-	if !ok || v == "" {
+	v := os.Getenv(key)
+	if v == "" {
+		v = env[key]
+	}
+	if v == "" {
 		return defaultValue
 	}
 	i, err := strconv.ParseInt(v, 10, 64)
