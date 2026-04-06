@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/wso2-open-operations/infra-operations/operations/email-service/internal/handler"
 	smtpclient "github.com/wso2-open-operations/infra-operations/operations/email-service/internal/smtp"
@@ -34,6 +35,11 @@ func main() {
 	password := mustEnv(env, "SMTP_PASSWORD")
 	smtpPort := envOrDefault(env, "SMTP_PORT", "587")
 	httpPort := envOrDefault(env, "PORT", "9090")
+
+	readHeaderTimeout := envOrDefaultDuration(env, "HTTP_READ_HEADER_TIMEOUT", 5*time.Second)
+	readTimeout := envOrDefaultDuration(env, "HTTP_READ_TIMEOUT", 10*time.Second)
+	writeTimeout := envOrDefaultDuration(env, "HTTP_WRITE_TIMEOUT", 10*time.Second)
+	idleTimeout := envOrDefaultDuration(env, "HTTP_IDLE_TIMEOUT", 120*time.Second)
 
 	client := smtpclient.New(smtpclient.Config{
 		Hostname: hostname,
@@ -53,8 +59,12 @@ func main() {
 	slog.Info("email-service starting", "addr", addr, "smtp_host", hostname, "smtp_port", smtpPort)
 
 	server := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 
 	if err := server.ListenAndServe(); err != nil {
@@ -81,6 +91,21 @@ func envOrDefault(env map[string]string, key, defaultValue string) string {
 		return v
 	}
 	return defaultValue
+}
+
+// envOrDefaultDuration returns the parsed duration of the named config key, or
+// defaultValue if it is not set or fails to parse.
+func envOrDefaultDuration(env map[string]string, key string, defaultValue time.Duration) time.Duration {
+	v, ok := env[key]
+	if !ok || v == "" {
+		return defaultValue
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		slog.Warn("invalid duration for config, using default", "key", key, "value", v, "default", defaultValue, "error", err)
+		return defaultValue
+	}
+	return d
 }
 
 // loadDotEnv reads KEY=VALUE pairs from the named file.
