@@ -38,7 +38,7 @@ func (h *HealthHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.client.Ping(); err != nil {
+	if err := h.client.Ping(r.Context()); err != nil {
 		slog.Error("health-check: SMTP ping failed", "error", err)
 		writeJSON(w, http.StatusServiceUnavailable, HealthResponse{Status: "unhealthy"})
 		return

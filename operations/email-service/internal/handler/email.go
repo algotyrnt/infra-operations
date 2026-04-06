@@ -16,6 +16,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
@@ -27,8 +28,8 @@ import (
 
 // Mailer defines the dependencies for the email service handlers.
 type Mailer interface {
-	SendEmail(msg *smtpclient.Message) error
-	Ping() error
+	SendEmail(ctx context.Context, msg *smtpclient.Message) error
+	Ping(ctx context.Context) error
 }
 
 // EmailHandler holds the dependencies for the email HTTP handler.
@@ -111,7 +112,7 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	if err := h.client.SendEmail(outMsg); err != nil {
+	if err := h.client.SendEmail(r.Context(), outMsg); err != nil {
 		msgStr := "An error occurred while sending the email!"
 		slog.Error(msgStr, "error", err)
 		writeJSON(w, http.StatusInternalServerError, ResponseMessage{Message: msgStr})

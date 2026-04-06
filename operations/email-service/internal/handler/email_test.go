@@ -17,6 +17,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -30,11 +31,11 @@ type mockMailer struct {
 	err error
 }
 
-func (m *mockMailer) SendEmail(msg *smtpclient.Message) error {
+func (m *mockMailer) SendEmail(ctx context.Context, msg *smtpclient.Message) error {
 	return m.err
 }
 
-func (m *mockMailer) Ping() error {
+func (m *mockMailer) Ping(ctx context.Context) error {
 	return m.err
 }
 

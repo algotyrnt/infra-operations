@@ -17,6 +17,7 @@ package smtpclient
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -75,19 +76,32 @@ func New(cfg Config) *Client {
 // credentials are accepted. It dials the server, upgrades to TLS via
 // STARTTLS, performs AUTH, then sends QUIT without touching the message
 // pipeline. It returns nil when the server is healthy.
-func (c *Client) Ping() error {
+func (c *Client) Ping(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	addr := net.JoinHostPort(c.cfg.Hostname, c.cfg.Port)
 
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("dial SMTP server: %w", err)
 	}
 
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+	}
+	stop := context.AfterFunc(ctx, func() {
+		conn.SetDeadline(time.Now())
+	})
+
 	smtpClient, err := smtp.NewClient(conn, c.cfg.Hostname)
 	if err != nil {
+		stop()
 		conn.Close()
 		return fmt.Errorf("create SMTP client: %w", err)
 	}
+	defer stop()
 	defer smtpClient.Close()
 
 	tlsCfg := &tls.Config{
@@ -107,25 +121,38 @@ func (c *Client) Ping() error {
 }
 
 // SendEmail builds a multipart/mixed MIME message and sends it via STARTTLS.
-func (c *Client) SendEmail(msg *Message) error {
+func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 	raw, err := buildMIMEMessage(msg)
 	if err != nil {
 		return fmt.Errorf("build MIME message: %w", err)
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
 	addr := net.JoinHostPort(c.cfg.Hostname, c.cfg.Port)
 
 	// Dial plain TCP first — STARTTLS upgrades the connection.
-	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("dial SMTP server: %w", err)
 	}
 
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+	}
+	stop := context.AfterFunc(ctx, func() {
+		conn.SetDeadline(time.Now())
+	})
+
 	smtpClient, err := smtp.NewClient(conn, c.cfg.Hostname)
 	if err != nil {
+		stop()
 		conn.Close()
 		return fmt.Errorf("create SMTP client: %w", err)
 	}
+	defer stop()
 	defer smtpClient.Close()
 
 	// Upgrade to TLS via STARTTLS.
