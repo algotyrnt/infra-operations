@@ -125,12 +125,12 @@ The **fim-agent** runs on monitored Linux hosts and uses Linux `auditd` logs to 
 
 Its main responsibilities are to:
 
-- detect relevant file changes
-- correlate raw audit records into meaningful file events
-- identify the affected file, execution context, and responsible user or process
-- preserve useful evidence such as metadata, backups, and diffs where applicable
-- generate structured JSON event files
-- upload the generated results for centralized processing
+- Detect relevant file changes
+- Correlate raw audit records into meaningful file events
+- Identify the affected file, execution context, and responsible user or process
+- Preserve useful evidence such as metadata, backups, and diffs where applicable
+- Generate structured JSON event files
+- Upload the generated results for centralized processing
 
 In simple terms, the **fim-agent** converts low-level audit activity on each monitored server into understandable file integrity records.
 
@@ -140,10 +140,10 @@ The **dashboard** is the centralized component used to collect, store, and revie
 
 Its main responsibilities are to:
 
-- read JSON result files from Amazon S3
-- process and store extracted event data in a central database
-- provide a web-based interface for reviewing collected FIM results
-- support filtering, investigation, and export for operational use
+- Read JSON result files from Amazon S3
+- Process and store extracted event data in a central database
+- Provide a web-based interface for reviewing collected FIM results
+- Support filtering, investigation, and export for operational use
 
 In simple terms, the **dashboard** turns distributed JSON event files into a centralized monitoring and analysis platform.
 
@@ -196,11 +196,11 @@ The File Integrity Monitor product solves that problem by turning fragmented sys
 
 Instead of manually checking raw logs across many servers, teams can use this product to:
 
-* detect important file changes
-* preserve change evidence
-* centralize records from many hosts
-* investigate changes through a dashboard
-* support troubleshooting, operational audits, and forensic review
+* Detect important file changes
+* Preserve change evidence
+* Centralize records from many hosts
+* Investigate changes through a dashboard
+* Support troubleshooting, operational audits, and forensic review
 
 This makes the product useful both for day-to-day operations and for security-focused investigations.
 
@@ -281,13 +281,13 @@ flowchart TB
 
 The File Integrity Monitor product is useful for:
 
-* monitoring important file changes on Linux systems
-* operational auditing
-* evidence generation
-* investigating unexpected modifications
-* centralized visibility across multiple machines
-* reviewing file diffs and related context
-* exporting collected results for further analysis
+* Monitoring important file changes on Linux systems
+* Operational auditing
+* Evidence generation
+* Investigating unexpected modifications
+* Centralized visibility across multiple machines
+* Reviewing file diffs and related context
+* Exporting collected results for further analysis
 
 ---
 
