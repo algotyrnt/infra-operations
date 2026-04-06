@@ -226,24 +226,30 @@ Use the following Bash script to create the database and table:
 ```bash
 #!/bin/bash
 
-# ===== Configuration (same as Docker envs) =====
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=fim_user         # Please enter the DB_USER
-DB_PASSWORD='your-password'      # Please enter the DB_PASSWORD
-DB_NAME=FIMDB
-
-: "${DB_USER:?DB_USER is required}"
-: "${DB_PASSWORD:?DB_PASSWORD is required}"
-
-# ===== Create DB & Table =====
 set -euo pipefail
 
-if ! mysql -h "$DB_HOST" \
-      -P "$DB_PORT" \
-      -u "$DB_USER" \
-      -p"$DB_PASSWORD" <<EOF
+# ===== Root MySQL connection =====
+DB_HOST="127.0.0.1"
+DB_PORT="3306"
+ROOT_USER="root"
+ROOT_PASSWORD='your-root-password'
 
+# ===== Target database =====
+DB_NAME="FIMDB"
+
+# ===== Application user =====
+FIM_DB_USER="fim_user"
+FIM_DB_PASSWORD='your-fim-user-password'
+
+: "${ROOT_USER:?ROOT_USER is required}"
+: "${ROOT_PASSWORD:?ROOT_PASSWORD is required}"
+: "${FIM_DB_USER:?FIM_DB_USER is required}"
+: "${FIM_DB_PASSWORD:?FIM_DB_PASSWORD is required}"
+
+mysql -h "$DB_HOST" \
+      -P "$DB_PORT" \
+      -u "$ROOT_USER" \
+      -p"$ROOT_PASSWORD" <<EOF
 CREATE DATABASE IF NOT EXISTS ${DB_NAME}
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
@@ -262,14 +268,13 @@ CREATE TABLE IF NOT EXISTS centralised_fim_db (
     INDEX idx_timestamp (timestamp)
 ) ENGINE=InnoDB;
 
+CREATE USER IF NOT EXISTS '${FIM_DB_USER}'@'%' IDENTIFIED BY '${FIM_DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${FIM_DB_USER}'@'%';
+FLUSH PRIVILEGES;
 EOF
 
-then
-  echo "[ERROR] Failed to create FIM database or table." >&2
-  exit 1
-fi
+echo "[INFO] Database, table, and user permissions created successfully."
 
-echo "[INFO] FIM database and table created successfully."
 ```
 
 ### How to Use the Script
