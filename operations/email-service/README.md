@@ -58,10 +58,16 @@ Sends an email with an HTML template and optional attachments.
     "message": "Email sent successfully"
   }
   ```
+- `413 Payload Too Large`
+  ```json
+  {
+    "message": "request body too large"
+  }
+  ```
 
 ## Configuration
 
-This service configures itself primarily via environment variables. It can also securely load from a `.env` file at the root of the project.
+This service configures itself primarily via environment variables. It prioritizes OS environment variables, enabling seamless deployment in containerized environments (Kubernetes, Docker, Choreo), and will fall back to loading from a `.env` file at the root of the project if one is present.
 
 | Variable | Description | Default |
 | -------- | ----------- | ------- |
@@ -70,6 +76,11 @@ This service configures itself primarily via environment variables. It can also 
 | `SMTP_PASSWORD` | The SMTP password or secret key | **Required** |
 | `SMTP_PORT` | The SMTP connection port | `587` |
 | `PORT` | The HTTP listening port for the service | `9090` |
+| `HTTP_READ_HEADER_TIMEOUT` | Timeout for reading HTTP request headers | `5s` |
+| `HTTP_READ_TIMEOUT` | Timeout for reading the entire HTTP request | `10s` |
+| `HTTP_WRITE_TIMEOUT` | Timeout for writing the HTTP response | `10s` |
+| `HTTP_IDLE_TIMEOUT` | Timeout for keep-alive HTTP connections | `120s` |
+| `MAX_REQUEST_BODY_SIZE` | Maximum allowed request body size in bytes | `10485760` (10MB) |
 
 An example `.env.example` file is provided in the repository. Provide your own `.env` file with these values before running.
 

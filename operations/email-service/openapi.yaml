@@ -49,6 +49,12 @@ paths:
                 $ref: '#/components/schemas/ResponseMessage'
         '405':
           description: Method Not Allowed
+        '413':
+          description: Payload Too Large (request body exceeds the maximum permitted size).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseMessage'
         '500':
           description: Internal server error (failed to dispatch email).
           content:
