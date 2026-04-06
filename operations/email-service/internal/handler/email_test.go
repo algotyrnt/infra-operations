@@ -62,7 +62,7 @@ func decodeResponse(t *testing.T, rr *httptest.ResponseRecorder) ResponseMessage
 	return msg
 }
 
-// TestEmptyFromField mirrors emptyFromFieldTest in Ballerina.
+// TestEmptyFromField tests when the from field is empty.
 func TestEmptyFromField(t *testing.T) {
 	h := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
@@ -82,7 +82,7 @@ func TestEmptyFromField(t *testing.T) {
 	}
 }
 
-// TestEmptyRecipients mirrors emptyRecipientTest in Ballerina.
+// TestEmptyRecipients tests when recipients are empty.
 func TestEmptyRecipients(t *testing.T) {
 	h := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
@@ -102,7 +102,7 @@ func TestEmptyRecipients(t *testing.T) {
 	}
 }
 
-// TestInvalidTemplate mirrors invalidTemplateTest in Ballerina.
+// TestInvalidTemplate tests when the template is invalid.
 // "A" is a single character — invalid base64 padding.
 func TestInvalidTemplate(t *testing.T) {
 	h := newTestHandler(nil)
@@ -123,7 +123,7 @@ func TestInvalidTemplate(t *testing.T) {
 	}
 }
 
-// TestInvalidContentType mirrors invalidContentTypeTest in Ballerina.
+// TestInvalidContentType tests when the content type is invalid.
 // "application.pdf" is not a valid MIME type (missing slash).
 func TestInvalidContentType(t *testing.T) {
 	h := newTestHandler(nil)
