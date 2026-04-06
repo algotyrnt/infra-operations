@@ -22,7 +22,7 @@ public isolated function searchUser(string email) returns User[]|error {
     UserSearchResult usersResult = check scimOperationsClient->/organizations/internal/users/search.post({
         domain: "DEFAULT",
         filter: string `userName eq ${email}`,
-        attributes: ["id", "userName"]
+        attributes: ["id", "userName", "profileUrl", "urn:scim:wso2:schema"]
     });
     return usersResult.Resources;
 }

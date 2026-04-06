@@ -25,12 +25,14 @@ import ballerina/log;
     id: "infra/employee-data-sync"
 }
 public function main() returns error? {
+    log:printInfo("Employee data sync to Asgardeo started...");
     employee:Employee[] employees = check employee:getEmployees(filters =
             {employeeStatus: [employee:EmployeeStatusActive, employee:EmployeeStatusMarkedLeaver]});
     log:printInfo("Successfully fetched employee data. Total employees: " + employees.length().toString());
     int count = 0;
+    int updateFailureCount = 0;
     foreach employee:Employee employee in employees {
-        if count % 100 == 0 {
+        if count > 0 && count % 100 == 0 {
             log:printInfo(string `Processed ${count} employees so far...`);
             log:printInfo("Waiting for 1 minute to avoid hitting rate limits...");
             // Wait for 1 minute after processing every 100 employees to avoid hitting rate limits.
@@ -38,7 +40,7 @@ public function main() returns error? {
         }
         scim:User[] userResult = check scim:searchUser(employee.workEmail.toLowerAscii());
         if userResult.length() == 0 {
-            log:printInfo(string `User with email ${employee.workEmail} does not exist in Asgardeo. Skipping...`);
+            log:printWarn(string `User with email ${employee.workEmail} does not exist in Asgardeo. Skipping...`);
             count += 1;
             continue;
         }
@@ -57,11 +59,17 @@ public function main() returns error? {
             scim:User|error updatedUser = scim:updateUser(updatePayload, user.id);
             if updatedUser is error {
                 log:printError(string `Failed to update user: ${user.userName} in Asgardeo.`, updatedUser);
+                updateFailureCount += 1;
             } else {
                 log:printDebug(string `Successfully updated user: ${user.userName} in Asgardeo.`);
             }
         }
         count += 1;
     }
-    log:printInfo("Employees data sync to Asgardeo completed successfully.");
+
+    if updateFailureCount == 0 {
+        log:printInfo("Employees data sync completed successfully.");
+    } else {
+        log:printInfo(string `Employee data sync completed with ${updateFailureCount} update failure(s).`);
+    }
 }
