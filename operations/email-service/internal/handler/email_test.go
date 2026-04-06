@@ -39,9 +39,9 @@ func (m *mockMailer) Ping(ctx context.Context) error {
 	return m.err
 }
 
-// newTestHandler returns an EmailHandler using a mock Mailer.
+// newTestHandler returns an EmailHandler using a mock Mailer with a default large limit.
 func newTestHandler(err error) *EmailHandler {
-	return NewEmailHandler(&mockMailer{err: err})
+	return NewEmailHandler(&mockMailer{err: err}, 10*1024*1024)
 }
 
 func doPost(t *testing.T, h *EmailHandler, body any) *httptest.ResponseRecorder {
@@ -203,6 +203,24 @@ func TestHappyPath(t *testing.T) {
 	}
 	msg := decodeResponse(t, rr)
 	want := "Email sent successfully"
+	if msg.Message != want {
+		t.Errorf("expected %q, got %q", want, msg.Message)
+	}
+}
+
+// TestMaxBodySize ensures that large request bodies are rejected.
+func TestMaxBodySize(t *testing.T) {
+	h := NewEmailHandler(&mockMailer{err: nil}, 10) // 10 bytes limit
+	req := httptest.NewRequest(http.MethodPost, "/send-email", bytes.NewBufferString(`{"to":["a@b.com"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.SendEmail(rr, req)
+
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413, got %d", rr.Code)
+	}
+	msg := decodeResponse(t, rr)
+	want := "request body too large"
 	if msg.Message != want {
 		t.Errorf("expected %q, got %q", want, msg.Message)
 	}

@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -34,12 +35,16 @@ type Mailer interface {
 
 // EmailHandler holds the dependencies for the email HTTP handler.
 type EmailHandler struct {
-	client Mailer
+	client             Mailer
+	maxRequestBodySize int64
 }
 
 // NewEmailHandler creates an EmailHandler backed by the given Mailer.
-func NewEmailHandler(client Mailer) *EmailHandler {
-	return &EmailHandler{client: client}
+func NewEmailHandler(client Mailer, maxRequestBodySize int64) *EmailHandler {
+	return &EmailHandler{
+		client:             client,
+		maxRequestBodySize: maxRequestBodySize,
+	}
 }
 
 // SendEmail handles POST /send-email.
@@ -50,8 +55,17 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxRequestBodySize)
+
 	var req EmailRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			slog.Error("request body too large", "error", err, "limit", h.maxRequestBodySize)
+			writeJSON(w, http.StatusRequestEntityTooLarge, ResponseMessage{Message: "request body too large"})
+			return
+		}
+
 		slog.Error("failed to decode request body", "error", err)
 		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: "invalid request body"})
 		return

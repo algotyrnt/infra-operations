@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,6 +42,8 @@ func main() {
 	writeTimeout := envOrDefaultDuration(env, "HTTP_WRITE_TIMEOUT", 10*time.Second)
 	idleTimeout := envOrDefaultDuration(env, "HTTP_IDLE_TIMEOUT", 120*time.Second)
 
+	maxRequestBodySize := envOrDefaultInt64(env, "MAX_REQUEST_BODY_SIZE", 10*1024*1024)
+
 	client := smtpclient.New(smtpclient.Config{
 		Hostname: hostname,
 		Username: username,
@@ -48,7 +51,7 @@ func main() {
 		Port:     smtpPort,
 	})
 
-	emailHandler := handler.NewEmailHandler(client)
+	emailHandler := handler.NewEmailHandler(client, maxRequestBodySize)
 	healthHandler := handler.NewHealthHandler(client)
 
 	mux := http.NewServeMux()
@@ -56,7 +59,7 @@ func main() {
 	mux.HandleFunc("/health-check", healthHandler.HealthCheck)
 
 	addr := ":" + httpPort
-	slog.Info("email-service starting", "addr", addr, "smtp_host", hostname, "smtp_port", smtpPort)
+	slog.Info("email-service starting", "addr", addr, "smtp_host", hostname, "smtp_port", smtpPort, "max_req_size", maxRequestBodySize)
 
 	server := &http.Server{
 		Addr:              addr,
@@ -106,6 +109,21 @@ func envOrDefaultDuration(env map[string]string, key string, defaultValue time.D
 		return defaultValue
 	}
 	return d
+}
+
+// envOrDefaultInt64 parses the named config key as an int64, or
+// defaultValue if it is not set or fails to parse.
+func envOrDefaultInt64(env map[string]string, key string, defaultValue int64) int64 {
+	v, ok := env[key]
+	if !ok || v == "" {
+		return defaultValue
+	}
+	i, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		slog.Warn("invalid int64 for config, using default", "key", key, "value", v, "default", defaultValue, "error", err)
+		return defaultValue
+	}
+	return i
 }
 
 // loadDotEnv reads KEY=VALUE pairs from the named file.
