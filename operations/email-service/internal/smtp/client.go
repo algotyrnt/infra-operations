@@ -213,17 +213,12 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 	var buf bytes.Buffer
 	mixedWriter := multipart.NewWriter(&buf)
 
-	writeHeader := func(key, value string) {
-		fmt.Fprintf(&buf, "%s: %s\r\n", key, value)
-	}
-
 	// We write headers into a scratch buffer before the multipart boundary so
 	// that we can know the boundary string from mixedWriter first.
 	var headerBuf bytes.Buffer
 	writeHeaderTo := func(key, value string) {
 		fmt.Fprintf(&headerBuf, "%s: %s\r\n", key, value)
 	}
-	_ = writeHeader // suppress "declared and not used" — headers go to headerBuf
 
 	writeHeaderTo("MIME-Version", "1.0")
 	writeHeaderTo("Date", time.Now().UTC().Format("Mon, 02 Jan 2006 15:04:05 -0700"))
