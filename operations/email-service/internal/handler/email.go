@@ -133,8 +133,9 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("email sent successfully", "subject", req.Subject)
-	writeJSON(w, http.StatusOK, ResponseMessage{Message: "Email sent successfully"})
+	msgStr := "Email sent successfully"
+	slog.Info(msgStr)
+	writeJSON(w, http.StatusOK, ResponseMessage{Message: msgStr})
 }
 
 // writeJSON encodes v as JSON and writes it with the given HTTP status code.

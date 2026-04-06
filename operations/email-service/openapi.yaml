@@ -3,9 +3,6 @@ info:
   title: Email Service API
   description: A microservice to dispatch emails via SMTP and check SMTP server connectivity.
   version: 1.0.0
-servers:
-  - url: http://localhost:9090
-    description: Local development server
 paths:
   /health-check:
     get:
