@@ -1,0 +1,14 @@
+[employee_data_sync.scim]
+scimOperationsServiceUrl=""
+    [employee_data_sync.scim.clientCredentialsOauth2Config]
+    tokenUrl=""
+    clientId=""
+    clientSecret=""
+    scopes=[]
+
+[employee_data_sync.employee]
+employeeBaseUrl=""
+    [employee_data_sync.employee.clientCredentialsOauth2Config]
+    tokenUrl=""
+    clientId=""
+    clientSecret=""
