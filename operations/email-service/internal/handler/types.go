@@ -19,20 +19,23 @@ package handler
 type EmailAttachment struct {
 	ContentName string `json:"contentName"`
 	ContentType string `json:"contentType"`
-	Attachment []byte `json:"attachment"`
+	Attachment  []byte `json:"attachment"`
 }
 
 // EmailRequest is the JSON body accepted by POST /send-email.
 type EmailRequest struct {
-	To []string `json:"to"`
-	CC []string `json:"cc,omitempty"`
-	BCC []string `json:"bcc,omitempty"`
-	ReplyTo []string `json:"replyTo,omitempty"`
-	From string `json:"from"`
-	Subject string `json:"subject"`
-	Template string `json:"template"`
+	To          []string          `json:"to"`
+	CC          []string          `json:"cc,omitempty"`
+	BCC         []string          `json:"bcc,omitempty"`
+	ReplyTo     []string          `json:"replyTo,omitempty"`
+	From        string            `json:"from"`
+	Subject     string            `json:"subject"`
+	Template    string            `json:"template"`
 	Attachments []EmailAttachment `json:"attachments,omitempty"`
 }
+
+// HealthStatus represents the health-check status.
+type HealthStatus string
 
 // ResponseMessage is the JSON body returned by all responses.
 type ResponseMessage struct {
@@ -41,5 +44,5 @@ type ResponseMessage struct {
 
 // HealthResponse is the JSON body returned by GET /health-check.
 type HealthResponse struct {
-	Status string `json:"status"`
+	Status HealthStatus `json:"status"`
 }
