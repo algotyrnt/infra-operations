@@ -37,7 +37,7 @@ func main() {
 	hostname := mustEnv(env, "SMTP_HOSTNAME")
 	username := mustEnv(env, "SMTP_USERNAME")
 	password := mustEnv(env, "SMTP_PASSWORD")
-	smtpPort := envOrDefault(env, "SMTP_PORT", "587")
+	smtpPort := envOrDefault(env, "SMTP_PORT", smtpclient.PORT_STARTTLS)
 	httpPort := envOrDefault(env, "PORT", "9090")
 
 	readHeaderTimeout := envOrDefaultDuration(env, "HTTP_READ_HEADER_TIMEOUT", 5*time.Second)

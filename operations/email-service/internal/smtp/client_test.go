@@ -23,8 +23,8 @@ import (
 // TestNew_DefaultPort verifies that the SMTP client defaults to port 587.
 func TestNew_DefaultPort(t *testing.T) {
 	c := New(Config{Hostname: "smtp.example.com", Username: "user", Password: "pass"})
-	if c.cfg.Port != "587" {
-		t.Errorf("expected default port 587, got %q", c.cfg.Port)
+	if c.cfg.Port != PORT_STARTTLS {
+		t.Errorf("expected default port %s, got %q", PORT_STARTTLS, c.cfg.Port)
 	}
 }
 

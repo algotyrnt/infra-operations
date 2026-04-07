@@ -67,7 +67,7 @@ type Client struct {
 // New creates a new Client using the provided Config.
 func New(cfg Config) *Client {
 	if cfg.Port == "" {
-		cfg.Port = "587"
+		cfg.Port = PORT_STARTTLS
 	}
 	return &Client{cfg: cfg}
 }
@@ -77,10 +77,29 @@ func New(cfg Config) *Client {
 func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) {
 	addr := net.JoinHostPort(c.cfg.Hostname, c.cfg.Port)
 
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return nil, nil, fmt.Errorf(ERR_FMT_DIAL, err)
+	var conn net.Conn
+	var err error
+
+	tlsCfg := &tls.Config{
+		ServerName: c.cfg.Hostname,
+		MinVersion: tls.VersionTLS12,
+	}
+
+	if c.cfg.Port == PORT_SMTPS {
+		// Immediate TLS dial for port 465.
+		var d tls.Dialer
+		d.Config = tlsCfg
+		conn, err = d.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			return nil, nil, fmt.Errorf(ERR_FMT_TLS_DIAL, err)
+		}
+	} else {
+		// Regular TCP dial followed by STARTTLS (standard for 587).
+		var d net.Dialer
+		conn, err = d.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			return nil, nil, fmt.Errorf(ERR_FMT_DIAL, err)
+		}
 	}
 
 	if deadline, ok := ctx.Deadline(); ok {
@@ -99,13 +118,12 @@ func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) 
 
 	cleanup := func() { sc.Close(); stop() }
 
-	tlsCfg := &tls.Config{
-		ServerName: c.cfg.Hostname,
-		MinVersion: tls.VersionTLS12,
-	}
-	if err = sc.StartTLS(tlsCfg); err != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf(ERR_FMT_STARTTLS, err)
+	// Upgrade to TLS via STARTTLS if not already on an encrypted connection.
+	if c.cfg.Port != PORT_SMTPS {
+		if err = sc.StartTLS(tlsCfg); err != nil {
+			cleanup()
+			return nil, nil, fmt.Errorf(ERR_FMT_STARTTLS, err)
+		}
 	}
 
 	auth := smtp.PlainAuth("", c.cfg.Username, c.cfg.Password, c.cfg.Hostname)

@@ -22,8 +22,13 @@ const (
 	DEFAULT_PING_TIMEOUT = 10 * time.Second
 	DEFAULT_SEND_TIMEOUT = 30 * time.Second
 
+	// SMTP ports.
+	PORT_SMTPS    = "465"
+	PORT_STARTTLS = "587"
+
 	// Connection and handshake — shared by Ping and SendEmail.
 	ERR_FMT_DIAL       = "dial SMTP server: %w"
+	ERR_FMT_TLS_DIAL   = "TLS dial SMTP server: %w"
 	ERR_FMT_NEW_CLIENT = "create SMTP client: %w"
 	ERR_FMT_STARTTLS   = "STARTTLS: %w"
 	ERR_FMT_AUTH       = "SMTP auth: %w"
