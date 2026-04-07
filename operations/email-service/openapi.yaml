@@ -69,6 +69,7 @@ components:
       properties:
         status:
           type: string
+          enum: [healthy, unhealthy]
           description: The health status ('healthy' or 'unhealthy')
           example: healthy
       required:

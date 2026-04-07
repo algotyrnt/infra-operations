@@ -4,34 +4,29 @@ A robust, simple, and dependency-free (other than the standard library) HTTP mic
 
 ## Features
 
-- **Standardized Architecture**: Adheres strictly to the standard Go project layout with `cmd` and `internal` separation.
-- **SMTP Gateway**: Secure email sending utilizing native STARTTLS upgrading.
-- **RESTful Endpoints**: Delivers `/send-email` for dispatch and `/health-check` for verifying SMTP uptime.
-- **Highly Testable**: Full abstraction through Mailer interfaces enabling fast, reliable mocking and testing.
+- **Zero external dependencies**: Built entirely on the Go standard library.
+- **Standard Go layout**: Strict `cmd/` and `internal/` separation for maintainability.
+- **Secure by default**: STARTTLS with TLS 1.2 minimum; context-aware timeouts on all SMTP operations.
+- **Graceful shutdown**: Handles `SIGINT`/`SIGTERM` with a 30-second drain, enabling zero-downtime rolling restarts.
+- **Testable design**: Full Mailer interface abstraction allowing fast, mock-based unit tests with no network calls.
+- **RESTful API**: `/send-email` for dispatch and `/health-check` for deep SMTP connectivity verification.
+- **OpenAPI Specification**: Defined in [`openapi.yaml`](./openapi.yaml) for easy integration and documentation.
 
 ## Endpoints
 
 ### `GET /health-check`
 
-Checks if the service is running and if the upstream SMTP server is reachable via a `Ping()`.
+Performs a real SMTP dial + STARTTLS + AUTH + QUIT to confirm the upstream server is reachable and credentials are valid.
 
-**Response**
-- `200 OK`
-  ```json
-  {
-    "status": "healthy"
-  }
-  ```
-- `503 Service Unavailable`
-  ```json
-  {
-    "status": "unhealthy"
-  }
-  ```
+**Responses**
+| Status | Body |
+|--------|------|
+| `200 OK` | `{"status": "healthy"}` |
+| `503 Service Unavailable` | `{"status": "unhealthy"}` |
 
 ### `POST /send-email`
 
-Sends an email with an HTML template and optional attachments.
+Sends an email with an HTML body and optional file attachments.
 
 **Request Body (JSON)**:
 ```json
@@ -42,7 +37,7 @@ Sends an email with an HTML template and optional attachments.
   "replyTo":     ["reply@example.com"],         // optional
   "from":        "sender@example.com",          // required, non-empty
   "subject":     "Hello",                       // required
-  "template":    "<base64-encoded HTML>",       // required
+  "template":    "<base64-encoded HTML>",       // required — see note below
   "attachments": [{                             // optional
     "contentName": "file.pdf",
     "contentType": "application/pdf",
@@ -51,57 +46,83 @@ Sends an email with an HTML template and optional attachments.
 }
 ```
 
-**Response**:
-- `200 OK`
-  ```json
-  {
-    "message": "Email sent successfully"
-  }
-  ```
-- `413 Payload Too Large`
-  ```json
-  {
-    "message": "request body too large"
-  }
-  ```
+> The HTML body is transmitted as a base64 string to avoid ambiguity when the template contains characters that clash with JSON encoding (e.g., unescaped `<`, `>`, or embedded quotes in inline scripts/styles). Callers encode the raw HTML once; this service decodes it and encodes it again as `quoted-printable` inside the MIME message, which is the standard encoding for HTML email bodies.
+
+**Responses**
+| Status | Body |
+|--------|------|
+| `200 OK` | `{"message": "Email sent successfully"}` |
+| `400 Bad Request` | `{"message": "<validation error>"}` |
+| `413 Payload Too Large` | `{"message": "request body too large"}` |
+| `500 Internal Server Error` | `{"message": "failed to send email"}` |
 
 ## Configuration
 
-This service configures itself primarily via environment variables. It prioritizes OS environment variables, enabling seamless deployment in containerized environments (Kubernetes, Docker, Choreo), and will fall back to loading from a `.env` file at the root of the project if one is present.
+The service prioritises OS environment variables, enabling seamless deployment in containerised environments (Kubernetes, Docker, Choreo). If a variable is not found in the environment it falls back to a `.env` file at the project root.
 
 | Variable | Description | Default |
 | -------- | ----------- | ------- |
-| `SMTP_HOSTNAME` | The SMTP server host (e.g. email-smtp.us-east-1.amazonaws.com) | **Required** |
-| `SMTP_USERNAME` | The SMTP username or access key | **Required** |
-| `SMTP_PASSWORD` | The SMTP password or secret key | **Required** |
-| `SMTP_PORT` | The SMTP connection port | `587` |
-| `PORT` | The HTTP listening port for the service | `9090` |
-| `HTTP_READ_HEADER_TIMEOUT` | Timeout for reading HTTP request headers | `5s` |
-| `HTTP_READ_TIMEOUT` | Timeout for reading the entire HTTP request | `10s` |
-| `HTTP_WRITE_TIMEOUT` | Timeout for writing the HTTP response | `10s` |
-| `HTTP_IDLE_TIMEOUT` | Timeout for keep-alive HTTP connections | `120s` |
-| `MAX_REQUEST_BODY_SIZE` | Maximum allowed request body size in bytes | `10485760` (10MB) |
+| `SMTP_HOSTNAME` | SMTP server hostname (e.g. `email-smtp.us-east-1.amazonaws.com`) | **Required** |
+| `SMTP_USERNAME` | SMTP username or access key | **Required** |
+| `SMTP_PASSWORD` | SMTP password or secret key | **Required** |
+| `SMTP_PORT` | SMTP port | `587` |
+| `PORT` | HTTP listening port | `9090` |
+| `HTTP_READ_HEADER_TIMEOUT` | Timeout to read request headers | `5s` |
+| `HTTP_READ_TIMEOUT` | Timeout to read the full request body | `10s` |
+| `HTTP_WRITE_TIMEOUT` | Timeout to write the full response | `10s` |
+| `HTTP_IDLE_TIMEOUT` | Keep-alive idle connection timeout | `120s` |
+| `MAX_REQUEST_BODY_SIZE` | Maximum request body size in bytes | `10485760` (10 MB) |
 
-An example `.env.example` file is provided in the repository. Provide your own `.env` file with these values before running.
+All timeout values accept standard Go duration strings (e.g. `5s`, `1m30s`).
+
+An `.env.example` file is provided. Copy it to `.env` and fill in your SMTP credentials before running locally.
 
 ## Running Locally
 
-To build and run the service locally:
-
 ```bash
-# copy the env example
+# Copy and populate the environment file
 cp .env.example .env
 
-# populate your credentials in .env
-
-# start the service
-go run cmd/email-service/main.go
+# Start the service
+go run ./cmd/email-service/
 ```
 
 ## Testing
 
-To run the unit tests (which employ a mocked Mailer without triggering network dial timeouts):
+### Unit Tests
+
+The unit tests use a mock `Mailer` — no network connections are made:
 
 ```bash
-go test -v ./...
+go test -race -count=1 ./...
 ```
+
+### Manual Testing (Curl & Postman)
+
+A collection of test utilities is provided in the [`testing/`](./testing) directory:
+
+#### Curl Functions
+You can source the provided shell script to load helper functions into your terminal:
+
+```bash
+# Load the testing functions
+source testing/test_service.sh
+
+# Run health check
+health
+
+# Send a basic email (default: recipient@example.com)
+send_basic "your-email@example.com"
+
+# Send a full email with attachments and CC/BCC
+send_full
+```
+
+#### Postman Collection
+Import [`postman_collection.json`](./testing/postman_collection.json) into Postman to test all endpoints. The collection includes:
+- **`base_url` variable**: Set to `http://localhost:9090` by default.
+- **Pre-configured requests**: Health Check, Basic Email, and Full Email with attachments.
+
+## License
+
+This project is licensed under the [Apache License 2.0](../../LICENSE). The full license text is in the repository root.
