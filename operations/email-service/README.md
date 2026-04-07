@@ -7,7 +7,6 @@ A robust, simple, and dependency-free (other than the standard library) HTTP mic
 - **Zero external dependencies**: Built entirely on the Go standard library.
 - **Standard Go layout**: Strict `cmd/` and `internal/` separation for maintainability.
 - **Secure by default**: STARTTLS with TLS 1.2 minimum; context-aware timeouts on all SMTP operations.
-- **Graceful shutdown**: Handles `SIGINT`/`SIGTERM` with a 30-second drain, enabling zero-downtime rolling restarts.
 - **Testable design**: Full Mailer interface abstraction allowing fast, mock-based unit tests with no network calls.
 - **RESTful API**: `/send-email` for dispatch and `/health-check` for deep SMTP connectivity verification.
 - **OpenAPI Specification**: Defined in [`openapi.yaml`](./openapi.yaml) for easy integration and documentation.
@@ -19,6 +18,7 @@ A robust, simple, and dependency-free (other than the standard library) HTTP mic
 Performs a real SMTP dial + STARTTLS + AUTH + QUIT to confirm the upstream server is reachable and credentials are valid.
 
 **Responses**
+
 | Status | Body |
 |--------|------|
 | `200 OK` | `{"status": "healthy"}` |
@@ -49,6 +49,7 @@ Sends an email with an HTML body and optional file attachments.
 > The HTML body is transmitted as a base64 string to avoid ambiguity when the template contains characters that clash with JSON encoding (e.g., unescaped `<`, `>`, or embedded quotes in inline scripts/styles). Callers encode the raw HTML once; this service decodes it and encodes it again as `quoted-printable` inside the MIME message, which is the standard encoding for HTML email bodies.
 
 **Responses**
+
 | Status | Body |
 |--------|------|
 | `200 OK` | `{"message": "Email sent successfully"}` |
@@ -62,7 +63,7 @@ The service prioritises OS environment variables, enabling seamless deployment i
 
 | Variable | Description | Default |
 | -------- | ----------- | ------- |
-| `SMTP_HOSTNAME` | SMTP server hostname (e.g. `email-smtp.us-east-1.amazonaws.com`) | **Required** |
+| `SMTP_HOSTNAME` | SMTP server hostname (e.g. `smtp.example.com`) | **Required** |
 | `SMTP_USERNAME` | SMTP username or access key | **Required** |
 | `SMTP_PASSWORD` | SMTP password or secret key | **Required** |
 | `SMTP_PORT` | SMTP port | `587` |
@@ -97,31 +98,6 @@ The unit tests use a mock `Mailer` — no network connections are made:
 go test -race -count=1 ./...
 ```
 
-### Manual Testing (Curl & Postman)
-
-A collection of test utilities is provided in the [`testing/`](./testing) directory:
-
-#### Curl Functions
-You can source the provided shell script to load helper functions into your terminal:
-
-```bash
-# Load the testing functions
-source testing/test_service.sh
-
-# Run health check
-health
-
-# Send a basic email (default: recipient@example.com)
-send_basic "your-email@example.com"
-
-# Send a full email with attachments and CC/BCC
-send_full
-```
-
-#### Postman Collection
-Import [`postman_collection.json`](./testing/postman_collection.json) into Postman to test all endpoints. The collection includes:
-- **`base_url` variable**: Set to `http://localhost:9090` by default.
-- **Pre-configured requests**: Health Check, Basic Email, and Full Email with attachments.
 
 ## License
 

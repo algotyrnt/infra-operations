@@ -29,7 +29,10 @@ import (
 )
 
 func main() {
-	env := loadDotEnv(".env")
+	env, err := loadDotEnv(".env")
+	if err != nil {
+		slog.Warn("failed to load .env file", "error", err)
+	}
 
 	hostname := mustEnv(env, "SMTP_HOSTNAME")
 	username := mustEnv(env, "SMTP_USERNAME")
@@ -69,7 +72,7 @@ func main() {
 		IdleTimeout:       idleTimeout,
 	}
 
-	slog.Info("email-service starting", "smtp_host", hostname, "smtp_port", smtpPort, "max_req_size", maxRequestBodySize)
+	slog.Info("email-service starting", "port", httpPort, "smtp_host", hostname, "smtp_port", smtpPort, "max_req_size", maxRequestBodySize)
 
 	if err := server.ListenAndServe(); err != nil {
 		slog.Error("server exited unexpectedly", "error", err)
@@ -137,11 +140,14 @@ func envOrDefaultInt64(env map[string]string, key string, defaultValue int64) in
 }
 
 // loadDotEnv reads KEY=VALUE pairs from the named file.
-func loadDotEnv(filename string) map[string]string {
+func loadDotEnv(filename string) (map[string]string, error) {
 	env := make(map[string]string)
 	f, err := os.Open(filename)
 	if err != nil {
-		return env // file absent — return empty map
+		if os.IsNotExist(err) {
+			return env, nil // file absent — return empty map
+		}
+		return nil, err
 	}
 	defer f.Close()
 
@@ -162,5 +168,10 @@ func loadDotEnv(filename string) map[string]string {
 
 		env[key] = value
 	}
-	return env
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return env, nil
 }

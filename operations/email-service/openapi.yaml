@@ -87,6 +87,7 @@ components:
 
     EmailAttachment:
       type: object
+      additionalProperties: false
       properties:
         contentName:
           type: string
@@ -98,8 +99,9 @@ components:
           example: application/pdf
         attachment:
           type: string
+          format: byte
           description: The raw file bytes, encoded as a base64 string.
-          example: JVBERi0xLjcKCjEgMCBvYmogICUgZW50cnkgcG9pbnQKPDwKICAvVHlwZSAvQ2F0YWxvZwogIC9QYWdlcyAyIDAgUgo+PgplbmRvYmoK...
+          example: SGVsbG8gV29ybGQh
       required:
         - contentName
         - contentType
@@ -107,6 +109,7 @@ components:
 
     EmailRequest:
       type: object
+      additionalProperties: false
       properties:
         to:
           type: array
@@ -144,6 +147,7 @@ components:
           example: Welcome to our service!
         template:
           type: string
+          format: byte
           description: The base64-encoded HTML body of the email.
           example: PGgxPkhlbGxvIFdvcmxkPC9oMT4=
         attachments:

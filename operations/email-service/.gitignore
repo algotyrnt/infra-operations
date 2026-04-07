@@ -40,3 +40,4 @@ go.work.sum
 
 # Custom Application Binaries
 bin/
+/email-service
