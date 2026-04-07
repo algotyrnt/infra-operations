@@ -47,7 +47,12 @@ func TestValidateMIMEType(t *testing.T) {
 		{"valid html with params", "text/html; charset=utf-8", false},
 		{"valid octet-stream", "application/octet-stream", false},
 		{"valid jpeg", "image/jpeg", false},
+		{"valid plain text", "text/plain", false},
 		{"missing slash — bare word", "applicationpdf", true},
+		{"type without subtype", "application", true},
+		{"type with trailing slash", "image/", true},
+		{"subtype with leading slash", "/jpeg", true},
+		{"multiple slashes", "application/pdf/extra", true},
 		{"dot separator instead of slash", "application.pdf", true},
 		{"empty string", "", true},
 	}
