@@ -56,7 +56,7 @@ type Config struct {
 	Hostname string
 	Username string
 	Password string
-	Port string
+	Port     string
 }
 
 // Client is a reusable SMTP sender.
@@ -72,20 +72,15 @@ func New(cfg Config) *Client {
 	return &Client{cfg: cfg}
 }
 
-// Ping verifies that the SMTP server is reachable and that the configured
-// credentials are accepted. It dials the server, upgrades to TLS via
-// STARTTLS, performs AUTH, then sends QUIT without touching the message
-// pipeline. It returns nil when the server is healthy.
-func (c *Client) Ping(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
+// dialAndAuth dials the SMTP server, upgrades to TLS via STARTTLS, and
+// authenticates. It returns an smtp.Client and a cleanup function.
+func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) {
 	addr := net.JoinHostPort(c.cfg.Hostname, c.cfg.Port)
 
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("dial SMTP server: %w", err)
+		return nil, nil, fmt.Errorf(ERR_FMT_DIAL, err)
 	}
 
 	if deadline, ok := ctx.Deadline(); ok {
@@ -95,80 +90,69 @@ func (c *Client) Ping(ctx context.Context) error {
 		conn.SetDeadline(time.Now())
 	})
 
-	smtpClient, err := smtp.NewClient(conn, c.cfg.Hostname)
+	sc, err := smtp.NewClient(conn, c.cfg.Hostname)
 	if err != nil {
 		stop()
 		conn.Close()
-		return fmt.Errorf("create SMTP client: %w", err)
+		return nil, nil, fmt.Errorf(ERR_FMT_NEW_CLIENT, err)
 	}
-	defer stop()
-	defer smtpClient.Close()
+
+	cleanup := func() { sc.Close(); stop() }
 
 	tlsCfg := &tls.Config{
 		ServerName: c.cfg.Hostname,
 		MinVersion: tls.VersionTLS12,
 	}
-	if err = smtpClient.StartTLS(tlsCfg); err != nil {
-		return fmt.Errorf("STARTTLS: %w", err)
+	if err = sc.StartTLS(tlsCfg); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf(ERR_FMT_STARTTLS, err)
 	}
 
 	auth := smtp.PlainAuth("", c.cfg.Username, c.cfg.Password, c.cfg.Hostname)
-	if err = smtpClient.Auth(auth); err != nil {
-		return fmt.Errorf("SMTP auth: %w", err)
+	if err = sc.Auth(auth); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf(ERR_FMT_AUTH, err)
 	}
 
-	return smtpClient.Quit()
+	return sc, cleanup, nil
+}
+
+// Ping verifies that the SMTP server is reachable and credentials are accepted.
+// It performs a full handshake and returns nil if the server is healthy.
+func (c *Client) Ping(ctx context.Context) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DEFAULT_PING_TIMEOUT)
+		defer cancel()
+	}
+
+	sc, cleanup, err := c.dialAndAuth(ctx)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	return sc.Quit()
 }
 
 // SendEmail builds a multipart/mixed MIME message and sends it via STARTTLS.
 func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 	raw, err := buildMIMEMessage(msg)
 	if err != nil {
-		return fmt.Errorf("build MIME message: %w", err)
+		return fmt.Errorf(ERR_FMT_BUILD_MIME, err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DEFAULT_SEND_TIMEOUT)
+		defer cancel()
+	}
 
-	addr := net.JoinHostPort(c.cfg.Hostname, c.cfg.Port)
-
-	// Dial plain TCP first — STARTTLS upgrades the connection.
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	sc, cleanup, err := c.dialAndAuth(ctx)
 	if err != nil {
-		return fmt.Errorf("dial SMTP server: %w", err)
+		return err
 	}
-
-	if deadline, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(deadline)
-	}
-	stop := context.AfterFunc(ctx, func() {
-		conn.SetDeadline(time.Now())
-	})
-
-	smtpClient, err := smtp.NewClient(conn, c.cfg.Hostname)
-	if err != nil {
-		stop()
-		conn.Close()
-		return fmt.Errorf("create SMTP client: %w", err)
-	}
-	defer stop()
-	defer smtpClient.Close()
-
-	// Upgrade to TLS via STARTTLS.
-	tlsCfg := &tls.Config{
-		ServerName: c.cfg.Hostname,
-		MinVersion: tls.VersionTLS12,
-	}
-	if err = smtpClient.StartTLS(tlsCfg); err != nil {
-		return fmt.Errorf("STARTTLS: %w", err)
-	}
-
-	// Authenticate.
-	auth := smtp.PlainAuth("", c.cfg.Username, c.cfg.Password, c.cfg.Hostname)
-	if err = smtpClient.Auth(auth); err != nil {
-		return fmt.Errorf("SMTP auth: %w", err)
-	}
+	defer cleanup()
 
 	// Parse From address for envelope.
 	envelopeFrom := msg.From
@@ -177,8 +161,8 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 	}
 
 	// Set envelope sender.
-	if err = smtpClient.Mail(envelopeFrom); err != nil {
-		return fmt.Errorf("MAIL FROM: %w", err)
+	if err = sc.Mail(envelopeFrom); err != nil {
+		return fmt.Errorf(ERR_FMT_MAIL_FROM, err)
 	}
 
 	// Add all recipients (To + CC + BCC).
@@ -191,19 +175,19 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 		if parsed, err := mail.ParseAddress(rcpt); err == nil {
 			envelopeRcpt = parsed.Address
 		}
-		if err = smtpClient.Rcpt(envelopeRcpt); err != nil {
-			return fmt.Errorf("RCPT TO <%s>: %w", rcpt, err)
+		if err = sc.Rcpt(envelopeRcpt); err != nil {
+			return fmt.Errorf(ERR_FMT_RCPT_TO, rcpt, err)
 		}
 	}
 
 	// Stream the message body.
-	wc, err := smtpClient.Data()
+	wc, err := sc.Data()
 	if err != nil {
-		return fmt.Errorf("DATA command: %w", err)
+		return fmt.Errorf(ERR_FMT_DATA, err)
 	}
 	if _, err = wc.Write(raw); err != nil {
 		wc.Close()
-		return fmt.Errorf("write message body: %w", err)
+		return fmt.Errorf(ERR_FMT_WRITE_BODY, err)
 	}
 	return wc.Close()
 }
@@ -211,38 +195,34 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 // buildMIMEMessage constructs a multipart/mixed MIME email message.
 func buildMIMEMessage(msg *Message) ([]byte, error) {
 	var buf bytes.Buffer
+
 	mixedWriter := multipart.NewWriter(&buf)
 
-	// We write headers into a scratch buffer before the multipart boundary so
-	// that we can know the boundary string from mixedWriter first.
-	var headerBuf bytes.Buffer
-	writeHeaderTo := func(key, value string) {
-		fmt.Fprintf(&headerBuf, "%s: %s\r\n", key, value)
+	writeHeader := func(key, value string) {
+		fmt.Fprintf(&buf, "%s: %s%s", key, value, CRLF)
 	}
 
-	writeHeaderTo("MIME-Version", "1.0")
-	writeHeaderTo("Date", time.Now().UTC().Format("Mon, 02 Jan 2006 15:04:05 -0700"))
-	writeHeaderTo("From", msg.From)
-	writeHeaderTo("To", strings.Join(msg.To, ", "))
+	writeHeader(HEADER_MIME_VERSION, MIME_VERSION)
+	writeHeader(HEADER_DATE, time.Now().UTC().Format("Mon, 02 Jan 2006 15:04:05 -0700"))
+	writeHeader(HEADER_FROM, msg.From)
+	writeHeader(HEADER_TO, strings.Join(msg.To, ", "))
 
 	if len(msg.CC) > 0 {
-		writeHeaderTo("Cc", strings.Join(msg.CC, ", "))
+		writeHeader(HEADER_CC, strings.Join(msg.CC, ", "))
 	}
 	if len(msg.ReplyTo) > 0 {
-		writeHeaderTo("Reply-To", strings.Join(msg.ReplyTo, ", "))
+		writeHeader(HEADER_REPLY_TO, strings.Join(msg.ReplyTo, ", "))
 	}
 
-	writeHeaderTo("Subject", mime.QEncoding.Encode("UTF-8", msg.Subject))
-	writeHeaderTo("Content-Type", fmt.Sprintf(`multipart/mixed; boundary="%s"`, mixedWriter.Boundary()))
+	writeHeader(HEADER_SUBJECT, mime.QEncoding.Encode(MIME_CHARSET_UTF8, msg.Subject))
+	writeHeader(HEADER_CONTENT_TYPE, fmt.Sprintf(`%s; boundary="%s"`, MIME_TYPE_MULTIPART_MIXED, mixedWriter.Boundary()))
 
-	// Reassemble: headers → blank line → multipart body.
-	var final bytes.Buffer
-	final.Write(headerBuf.Bytes())
-	final.WriteString("\r\n")
+	// Blank line separates headers from body.
+	buf.WriteString(CRLF)
 
 	htmlPartHeader := textproto.MIMEHeader{}
-	htmlPartHeader.Set("Content-Type", `text/html; charset="UTF-8"`)
-	htmlPartHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	htmlPartHeader.Set(HEADER_CONTENT_TYPE, MIME_TYPE_TEXT_HTML+`; charset="`+MIME_CHARSET_UTF8+`"`)
+	htmlPartHeader.Set(HEADER_CONTENT_TRANSFER_ENCODING, MIME_ENCODING_QP)
 
 	htmlPart, err := mixedWriter.CreatePart(htmlPartHeader)
 	if err != nil {
@@ -258,10 +238,13 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 
 	for _, att := range msg.Attachments {
 		attHeader := textproto.MIMEHeader{}
-		attHeader.Set("Content-Type", att.ContentType)
-		attHeader.Set("Content-Transfer-Encoding", "base64")
-		attHeader.Set("Content-Disposition",
-			fmt.Sprintf(`attachment; filename="%s"`, att.ContentName))
+		attHeader.Set(HEADER_CONTENT_TYPE, att.ContentType)
+		attHeader.Set(HEADER_CONTENT_TRANSFER_ENCODING, MIME_ENCODING_BASE64)
+		disposition := mime.FormatMediaType("attachment", map[string]string{"filename": att.ContentName})
+		if disposition == "" {
+			return nil, fmt.Errorf(ERR_FMT_CONTENT_DISP, att.ContentName)
+		}
+		attHeader.Set(HEADER_CONTENT_DISPOSITION, disposition)
 
 		attPart, err := mixedWriter.CreatePart(attHeader)
 		if err != nil {
@@ -275,7 +258,9 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 			if end > len(encoded) {
 				end = len(encoded)
 			}
-			attPart.Write([]byte(encoded[i:end] + "\r\n")) //nolint:errcheck
+			if _, werr := attPart.Write([]byte(encoded[i:end] + CRLF)); werr != nil {
+				return nil, fmt.Errorf(ERR_FMT_WRITE_ATTACHMENT, att.ContentName, werr)
+			}
 		}
 	}
 
@@ -283,21 +268,19 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 		return nil, err
 	}
 
-	final.Write(buf.Bytes())
-	return final.Bytes(), nil
+	return buf.Bytes(), nil
 }
 
 // ValidateMIMEType returns an error if contentType is not a valid MIME type.
 // A valid MIME type must have the form "type/subtype" (e.g. "application/pdf").
-// Go's mime.ParseMediaType is lenient, so we enforce the slash explicitly.
 func ValidateMIMEType(contentType string) error {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return fmt.Errorf("invalid MIME type %q: %w", contentType, err)
+		return fmt.Errorf(ERR_FMT_INVALID_MIME_TYPE, contentType, err)
 	}
 	// mediaType must contain exactly one "/" separating type and subtype.
 	if !strings.Contains(mediaType, "/") {
-		return fmt.Errorf("invalid MIME type %q: missing subtype", contentType)
+		return fmt.Errorf(ERR_FMT_MISSING_SUBTYPE, contentType)
 	}
 	return nil
 }
