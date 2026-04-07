@@ -55,11 +55,10 @@ func main() {
 	healthHandler := handler.NewHealthHandler(client)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/send-email", emailHandler.SendEmail)
-	mux.HandleFunc("/health-check", healthHandler.HealthCheck)
+	mux.HandleFunc("POST /send-email", emailHandler.SendEmail)
+	mux.HandleFunc("GET /health-check", healthHandler.HealthCheck)
 
 	addr := ":" + httpPort
-	slog.Info("email-service starting", "addr", addr, "smtp_host", hostname, "smtp_port", smtpPort, "max_req_size", maxRequestBodySize)
 
 	server := &http.Server{
 		Addr:              addr,
@@ -70,19 +69,27 @@ func main() {
 		IdleTimeout:       idleTimeout,
 	}
 
+	slog.Info("email-service starting", "smtp_host", hostname, "smtp_port", smtpPort, "max_req_size", maxRequestBodySize)
+
 	if err := server.ListenAndServe(); err != nil {
-		slog.Error("server exited", "error", err)
+		slog.Error("server exited unexpectedly", "error", err)
 		os.Exit(1)
 	}
+}
+
+// lookupEnv returns the value for key, preferring the OS environment over
+// the dotenv map. Returns an empty string if the key is absent from both.
+func lookupEnv(env map[string]string, key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return env[key]
 }
 
 // mustEnv returns the value of the named config key or exits with
 // a clear error message if it is not set.
 func mustEnv(env map[string]string, key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		v = env[key]
-	}
+	v := lookupEnv(env, key)
 	if v == "" {
 		slog.Error("required config not set", "key", key)
 		os.Exit(1)
@@ -93,11 +100,7 @@ func mustEnv(env map[string]string, key string) string {
 // envOrDefault returns the value of the named config key, or
 // defaultValue if it is not set.
 func envOrDefault(env map[string]string, key, defaultValue string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		v = env[key]
-	}
-	if v != "" {
+	if v := lookupEnv(env, key); v != "" {
 		return v
 	}
 	return defaultValue
@@ -106,10 +109,7 @@ func envOrDefault(env map[string]string, key, defaultValue string) string {
 // envOrDefaultDuration returns the parsed duration of the named config key, or
 // defaultValue if it is not set or fails to parse.
 func envOrDefaultDuration(env map[string]string, key string, defaultValue time.Duration) time.Duration {
-	v := os.Getenv(key)
-	if v == "" {
-		v = env[key]
-	}
+	v := lookupEnv(env, key)
 	if v == "" {
 		return defaultValue
 	}
@@ -124,10 +124,7 @@ func envOrDefaultDuration(env map[string]string, key string, defaultValue time.D
 // envOrDefaultInt64 parses the named config key as an int64, or
 // defaultValue if it is not set or fails to parse.
 func envOrDefaultInt64(env map[string]string, key string, defaultValue int64) int64 {
-	v := os.Getenv(key)
-	if v == "" {
-		v = env[key]
-	}
+	v := lookupEnv(env, key)
 	if v == "" {
 		return defaultValue
 	}
