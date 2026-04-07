@@ -50,62 +50,50 @@ func NewEmailHandler(client Mailer, maxRequestBodySize int64) *EmailHandler {
 // SendEmail handles POST /send-email.
 // It parses the JSON request body and dispatches the email using the Mailer interface.
 func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, ResponseMessage{Message: "method not allowed"})
-		return
-	}
-
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxRequestBodySize)
 
 	var req EmailRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			slog.Error("request body too large", "error", err, "limit", h.maxRequestBodySize)
-			writeJSON(w, http.StatusRequestEntityTooLarge, ResponseMessage{Message: "request body too large"})
+			slog.Error(ERR_REQUEST_BODY_TOO_LARGE, "error", err, "limit", h.maxRequestBodySize)
+			writeJSON(w, http.StatusRequestEntityTooLarge, ResponseMessage{Message: ERR_REQUEST_BODY_TOO_LARGE})
 			return
 		}
 
 		slog.Error("failed to decode request body", "error", err)
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: "invalid request body"})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REQUEST_BODY})
 		return
 	}
 
 	if len(req.To) == 0 {
-		msg := "There should be at least one recipient!"
-		slog.Error(msg)
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: msg})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_RECIPIENTS_REQUIRED})
 		return
 	}
 
 	if strings.TrimSpace(req.From) == "" {
-		msg := "The 'From' email address cannot be empty"
-		slog.Error(msg)
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: msg})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_FROM_REQUIRED})
 		return
 	}
 
 	if strings.TrimSpace(req.Subject) == "" {
-		msg := "The 'Subject' cannot be empty"
-		slog.Error(msg)
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: msg})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_SUBJECT_REQUIRED})
 		return
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(req.Template)
 	if err != nil {
-		msg := "An error occurred while decoding the email template!"
-		slog.Error(msg, "error", err)
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: msg})
+		slog.Warn(ERR_TEMPLATE_DECODE_ERR, "error", err)
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_TEMPLATE_DECODE_ERR})
 		return
 	}
 	htmlBody := string(decoded)
 
 	outMsg := &smtpclient.Message{
-		To:       req.To,
-		CC:       req.CC,
-		BCC:      req.BCC,
-		ReplyTo:  req.ReplyTo,
+		To:       append([]string(nil), req.To...),
+		CC:       append([]string(nil), req.CC...),
+		BCC:      append([]string(nil), req.BCC...),
+		ReplyTo:  append([]string(nil), req.ReplyTo...),
 		From:     req.From,
 		Subject:  req.Subject,
 		HTMLBody: htmlBody,
@@ -113,9 +101,8 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 
 	for _, att := range req.Attachments {
 		if err := smtpclient.ValidateMIMEType(att.ContentType); err != nil {
-			msgStr := "Attachment content type is not supported"
-			slog.Error(msgStr, "contentType", att.ContentType, "error", err)
-			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: msgStr})
+			slog.Warn(ERR_INVALID_CONTENT_TYPE, "contentType", att.ContentType, "error", err)
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_CONTENT_TYPE})
 			return
 		}
 
@@ -127,20 +114,18 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.client.SendEmail(r.Context(), outMsg); err != nil {
-		msgStr := "An error occurred while sending the email!"
-		slog.Error(msgStr, "error", err)
-		writeJSON(w, http.StatusInternalServerError, ResponseMessage{Message: msgStr})
+		slog.Error(ERR_EMAIL_SEND_ERR, "error", err)
+		writeJSON(w, http.StatusInternalServerError, ResponseMessage{Message: ERR_EMAIL_SEND_ERR})
 		return
 	}
 
-	msgStr := "Email sent successfully"
-	slog.Info(msgStr)
-	writeJSON(w, http.StatusOK, ResponseMessage{Message: msgStr})
+	slog.Info(MSG_EMAIL_SENT_SUCCESS)
+	writeJSON(w, http.StatusOK, ResponseMessage{Message: MSG_EMAIL_SENT_SUCCESS})
 }
 
 // writeJSON encodes v as JSON and writes it with the given HTTP status code.
 func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON)
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		slog.Error("failed to write JSON response", "error", err)
