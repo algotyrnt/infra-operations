@@ -95,34 +95,34 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 
 	// Validate addresses to prevent CR/LF injection and ensure proper format.
 	if err := validateAddress(req.From); err != nil {
-		slog.Warn(ERR_INVALID_FROM, "address", req.From, "error", err)
+		slog.Warn(ERR_INVALID_FROM, "error", err)
 		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_FROM})
 		return
 	}
 	for _, addr := range req.To {
 		if err := validateAddress(addr); err != nil {
-			slog.Warn(ERR_INVALID_TO, "address", addr, "error", err)
+			slog.Warn(ERR_INVALID_TO, "error", err)
 			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_TO})
 			return
 		}
 	}
 	for _, addr := range req.CC {
 		if err := validateAddress(addr); err != nil {
-			slog.Warn(ERR_INVALID_CC, "address", addr, "error", err)
+			slog.Warn(ERR_INVALID_CC, "error", err)
 			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_CC})
 			return
 		}
 	}
 	for _, addr := range req.BCC {
 		if err := validateAddress(addr); err != nil {
-			slog.Warn(ERR_INVALID_BCC, "address", addr, "error", err)
+			slog.Warn(ERR_INVALID_BCC, "error", err)
 			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_BCC})
 			return
 		}
 	}
 	for _, addr := range req.ReplyTo {
 		if err := validateAddress(addr); err != nil {
-			slog.Warn(ERR_INVALID_REPLY_TO, "address", addr, "error", err)
+			slog.Warn(ERR_INVALID_REPLY_TO, "error", err)
 			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REPLY_TO})
 			return
 		}

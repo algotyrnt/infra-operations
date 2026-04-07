@@ -36,7 +36,7 @@ const (
 	// SendEmail envelope and data phases.
 	ERR_FMT_BUILD_MIME = "build MIME message: %w"
 	ERR_FMT_MAIL_FROM  = "MAIL FROM: %w"
-	ERR_FMT_RCPT_TO    = "RCPT TO <%s>: %w"
+	ERR_FMT_RCPT_TO    = "RCPT TO: %w"
 	ERR_FMT_DATA       = "DATA command: %w"
 	ERR_FMT_WRITE_BODY = "write message body: %w"
 

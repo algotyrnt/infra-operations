@@ -194,7 +194,7 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 			envelopeRcpt = parsed.Address
 		}
 		if err = sc.Rcpt(envelopeRcpt); err != nil {
-			return fmt.Errorf(ERR_FMT_RCPT_TO, rcpt, err)
+			return fmt.Errorf(ERR_FMT_RCPT_TO, err)
 		}
 	}
 
