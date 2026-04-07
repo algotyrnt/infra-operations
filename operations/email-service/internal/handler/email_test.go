@@ -205,3 +205,106 @@ func TestMaxBodySize(t *testing.T) {
 	h.SendEmail(rr, req)
 	assertResponse(t, rr, http.StatusRequestEntityTooLarge, ERR_REQUEST_BODY_TOO_LARGE)
 }
+
+// TestInvalidFromAddress tests various invalid 'from' addresses.
+func TestInvalidFromAddress(t *testing.T) {
+	h := newTestHandler(nil)
+	tests := []struct {
+		name string
+		from string
+	}{
+		{"invalid_format", "not-an-email"},
+		{"injection_cr", "sender@example.com\rInjected: Header"},
+		{"injection_lf", "sender@example.com\nInjected: Header"},
+		{"leading_space", " sender@example.com"},
+		{"trailing_space", "sender@example.com "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := doPost(t, h, map[string]any{
+				"to":       []string{"test@example.com"},
+				"from":     tt.from,
+				"subject":  "test",
+				"template": base64.StdEncoding.EncodeToString([]byte("hi")),
+			})
+			assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_FROM)
+		})
+	}
+}
+
+// TestInvalidToAddress tests an invalid 'to' address.
+func TestInvalidToAddress(t *testing.T) {
+	h := newTestHandler(nil)
+	rr := doPost(t, h, map[string]any{
+		"to":       []string{"valid@example.com", "invalid-email"},
+		"from":     "sender@example.com",
+		"subject":  "test",
+		"template": base64.StdEncoding.EncodeToString([]byte("hi")),
+	})
+	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_TO)
+}
+
+// TestInvalidCCAddress tests an invalid 'cc' address.
+func TestInvalidCCAddress(t *testing.T) {
+	h := newTestHandler(nil)
+	rr := doPost(t, h, map[string]any{
+		"to":       []string{"valid@example.com"},
+		"cc":       []string{"bad\naddress@example.com"},
+		"from":     "sender@example.com",
+		"subject":  "test",
+		"template": base64.StdEncoding.EncodeToString([]byte("hi")),
+	})
+	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_CC)
+}
+
+// TestInvalidBCCAddress tests an invalid 'bcc' address.
+func TestInvalidBCCAddress(t *testing.T) {
+	h := newTestHandler(nil)
+	rr := doPost(t, h, map[string]any{
+		"to":       []string{"valid@example.com"},
+		"bcc":      []string{"invalid-email"},
+		"from":     "sender@example.com",
+		"subject":  "test",
+		"template": base64.StdEncoding.EncodeToString([]byte("hi")),
+	})
+	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_BCC)
+}
+
+// TestInvalidReplyToAddress tests an invalid 'replyTo' address.
+func TestInvalidReplyToAddress(t *testing.T) {
+	h := newTestHandler(nil)
+	rr := doPost(t, h, map[string]any{
+		"to":       []string{"valid@example.com"},
+		"replyTo":  []string{"invalid-email"},
+		"from":     "sender@example.com",
+		"subject":  "test",
+		"template": base64.StdEncoding.EncodeToString([]byte("hi")),
+	})
+	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REPLY_TO)
+}
+
+// TestUnknownFields tests that unknown fields in the JSON body are rejected.
+func TestUnknownFields(t *testing.T) {
+	h := newTestHandler(nil)
+	rr := doPost(t, h, map[string]any{
+		"to":            []string{"test@example.com"},
+		"from":          "sender@example.com",
+		"subject":       "test",
+		"template":      base64.StdEncoding.EncodeToString([]byte("hi")),
+		"unknown_field": "some value",
+	})
+	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REQUEST_BODY)
+}
+
+// TestTrailingJSON tests that trailing JSON data after a valid object is rejected.
+func TestTrailingJSON(t *testing.T) {
+	h := newTestHandler(nil)
+	body := `{"to":["test@example.com"], "from":"sender@example.com", "subject":"test", "template":"aGk="} extra data`
+	req := httptest.NewRequest(http.MethodPost, "/send-email", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.SendEmail(rr, req)
+	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REQUEST_BODY)
+}
+

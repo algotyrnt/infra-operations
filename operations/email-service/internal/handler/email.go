@@ -20,8 +20,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/mail"
 	"strings"
 
 	smtpclient "github.com/wso2-open-operations/infra-operations/operations/email-service/internal/smtp"
@@ -53,7 +55,10 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxRequestBodySize)
 
 	var req EmailRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			slog.Error(ERR_REQUEST_BODY_TOO_LARGE, "error", err, "limit", h.maxRequestBodySize)
@@ -62,6 +67,13 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 		}
 
 		slog.Error("failed to decode request body", "error", err)
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REQUEST_BODY})
+		return
+	}
+
+	// Check for trailing JSON data.
+	if err := dec.Decode(&struct{}{}); err != nil && !errors.Is(err, io.EOF) {
+		slog.Error("failed to decode request body", "error", "trailing JSON data")
 		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REQUEST_BODY})
 		return
 	}
@@ -79,6 +91,41 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.Subject) == "" {
 		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_SUBJECT_REQUIRED})
 		return
+	}
+
+	// Validate addresses to prevent CR/LF injection and ensure proper format.
+	if err := validateAddress(req.From); err != nil {
+		slog.Warn(ERR_INVALID_FROM, "address", req.From, "error", err)
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_FROM})
+		return
+	}
+	for _, addr := range req.To {
+		if err := validateAddress(addr); err != nil {
+			slog.Warn(ERR_INVALID_TO, "address", addr, "error", err)
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_TO})
+			return
+		}
+	}
+	for _, addr := range req.CC {
+		if err := validateAddress(addr); err != nil {
+			slog.Warn(ERR_INVALID_CC, "address", addr, "error", err)
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_CC})
+			return
+		}
+	}
+	for _, addr := range req.BCC {
+		if err := validateAddress(addr); err != nil {
+			slog.Warn(ERR_INVALID_BCC, "address", addr, "error", err)
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_BCC})
+			return
+		}
+	}
+	for _, addr := range req.ReplyTo {
+		if err := validateAddress(addr); err != nil {
+			slog.Warn(ERR_INVALID_REPLY_TO, "address", addr, "error", err)
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REPLY_TO})
+			return
+		}
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(req.Template)
@@ -130,4 +177,17 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		slog.Error("failed to write JSON response", "error", err)
 	}
+}
+
+// validateAddress returns an error if the email address is invalid or contains
+// characters that could lead to header injection (CR/LF).
+func validateAddress(addr string) error {
+	if strings.ContainsAny(addr, "\r\n") {
+		return errors.New("address contains CR/LF characters")
+	}
+	if strings.TrimSpace(addr) != addr {
+		return errors.New("address contains leading or trailing whitespace")
+	}
+	_, err := mail.ParseAddress(addr)
+	return err
 }

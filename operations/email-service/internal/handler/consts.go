@@ -27,6 +27,11 @@ const (
 	// Email validation errors.
 	ERR_RECIPIENTS_REQUIRED  = "at least one recipient is required"
 	ERR_FROM_REQUIRED        = "'from' address is required"
+	ERR_INVALID_FROM         = "invalid 'from' address"
+	ERR_INVALID_TO           = "invalid 'to' address"
+	ERR_INVALID_CC           = "invalid 'cc' address"
+	ERR_INVALID_BCC          = "invalid 'bcc' address"
+	ERR_INVALID_REPLY_TO     = "invalid 'replyTo' address"
 	ERR_SUBJECT_REQUIRED     = "'subject' is required"
 	ERR_TEMPLATE_DECODE_ERR  = "failed to decode email template"
 	ERR_INVALID_CONTENT_TYPE = "unsupported attachment content type"
