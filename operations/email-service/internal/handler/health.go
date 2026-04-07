@@ -33,16 +33,11 @@ func NewHealthHandler(client Mailer) *HealthHandler {
 // HealthCheck handles GET /health-check.
 // It pings the SMTP server to confirm the client is operational.
 func (h *HealthHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, ResponseMessage{Message: "method not allowed"})
-		return
-	}
-
 	if err := h.client.Ping(r.Context()); err != nil {
 		slog.Error("health-check: SMTP ping failed", "error", err)
-		writeJSON(w, http.StatusServiceUnavailable, HealthResponse{Status: "unhealthy"})
+		writeJSON(w, http.StatusServiceUnavailable, HealthResponse{Status: STATUS_UNHEALTHY})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, HealthResponse{Status: "healthy"})
+	writeJSON(w, http.StatusOK, HealthResponse{Status: STATUS_HEALTHY})
 }
