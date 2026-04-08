@@ -61,19 +61,19 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	if err := dec.Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			slog.Error(ERR_REQUEST_BODY_TOO_LARGE, "error", err, "limit", h.maxRequestBodySize)
+			slog.Warn(ERR_REQUEST_BODY_TOO_LARGE, "error", err, "limit", h.maxRequestBodySize)
 			writeJSON(w, http.StatusRequestEntityTooLarge, ResponseMessage{Message: ERR_REQUEST_BODY_TOO_LARGE})
 			return
 		}
 
-		slog.Error("failed to decode request body", "error", err)
+		slog.Warn("failed to decode request body", "error", err)
 		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REQUEST_BODY})
 		return
 	}
 
 	// Check for trailing JSON data.
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		slog.Error("failed to decode request body", "error", "trailing JSON data")
+		slog.Warn("failed to decode request body", "error", "trailing JSON data")
 		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REQUEST_BODY})
 		return
 	}
@@ -95,34 +95,29 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 
 	// Validate addresses to prevent CR/LF injection and ensure proper format.
 	if err := validateAddress(req.From); err != nil {
-		slog.Warn(ERR_INVALID_FROM, "error", err)
 		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_FROM})
 		return
 	}
 	for _, addr := range req.To {
 		if err := validateAddress(addr); err != nil {
-			slog.Warn(ERR_INVALID_TO, "error", err)
 			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_TO})
 			return
 		}
 	}
 	for _, addr := range req.CC {
 		if err := validateAddress(addr); err != nil {
-			slog.Warn(ERR_INVALID_CC, "error", err)
 			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_CC})
 			return
 		}
 	}
 	for _, addr := range req.BCC {
 		if err := validateAddress(addr); err != nil {
-			slog.Warn(ERR_INVALID_BCC, "error", err)
 			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_BCC})
 			return
 		}
 	}
 	for _, addr := range req.ReplyTo {
 		if err := validateAddress(addr); err != nil {
-			slog.Warn(ERR_INVALID_REPLY_TO, "error", err)
 			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REPLY_TO})
 			return
 		}

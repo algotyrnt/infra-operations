@@ -17,6 +17,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -75,6 +76,9 @@ func main() {
 	slog.Info("email-service starting", "port", httpPort, "smtp_host", hostname, "smtp_port", smtpPort, "max_req_size", maxRequestBodySize)
 
 	if err := server.ListenAndServe(); err != nil {
+		if errors.Is(err, http.ErrServerClosed) {
+			return
+		}
 		slog.Error("server exited unexpectedly", "error", err)
 		os.Exit(1)
 	}

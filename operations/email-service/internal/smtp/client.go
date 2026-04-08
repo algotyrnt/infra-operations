@@ -103,7 +103,10 @@ func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) 
 	}
 
 	if deadline, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(deadline)
+		if err := conn.SetDeadline(deadline); err != nil {
+			conn.Close()
+			return nil, nil, fmt.Errorf("set connection deadline: %w", err)
+		}
 	}
 	stop := context.AfterFunc(ctx, func() {
 		conn.SetDeadline(time.Now())
@@ -226,7 +229,7 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 	}
 
 	writeHeader(HEADER_MIME_VERSION, MIME_VERSION)
-	writeHeader(HEADER_DATE, time.Now().UTC().Format("Mon, 02 Jan 2006 15:04:05 -0700"))
+	writeHeader(HEADER_DATE, time.Now().UTC().Format(time.RFC1123Z))
 	writeHeader(HEADER_FROM, msg.From)
 	writeHeader(HEADER_TO, strings.Join(msg.To, ", "))
 
