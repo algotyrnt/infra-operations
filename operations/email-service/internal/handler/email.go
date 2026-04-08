@@ -72,7 +72,7 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check for trailing JSON data.
-	if err := dec.Decode(&struct{}{}); err != nil && !errors.Is(err, io.EOF) {
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		slog.Error("failed to decode request body", "error", "trailing JSON data")
 		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REQUEST_BODY})
 		return

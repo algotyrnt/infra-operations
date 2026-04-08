@@ -297,14 +297,26 @@ func TestUnknownFields(t *testing.T) {
 	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REQUEST_BODY)
 }
 
-// TestTrailingJSON tests that trailing JSON data after a valid object is rejected.
+// TestTrailingJSON tests that trailing data after a valid object is rejected.
 func TestTrailingJSON(t *testing.T) {
 	h := newTestHandler(nil)
-	body := `{"to":["test@example.com"], "from":"sender@example.com", "subject":"test", "template":"aGk="} extra data`
-	req := httptest.NewRequest(http.MethodPost, "/send-email", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	h.SendEmail(rr, req)
-	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REQUEST_BODY)
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"invalid_junk", `{"to":["test@example.com"], "from":"sender@example.com", "subject":"test", "template":"aGk="} extra data`},
+		{"valid_json_object", `{"to":["test@example.com"], "from":"sender@example.com", "subject":"test", "template":"aGk="} {}`},
+		{"valid_json_literal", `{"to":["test@example.com"], "from":"sender@example.com", "subject":"test", "template":"aGk="} true`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/send-email", bytes.NewBufferString(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+			h.SendEmail(rr, req)
+			assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REQUEST_BODY)
+		})
+	}
 }
 
