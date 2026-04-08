@@ -116,7 +116,12 @@ func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) 
 		return nil, nil, fmt.Errorf(ERR_FMT_NEW_CLIENT, err)
 	}
 
-	cleanup := func() { sc.Close(); stop() }
+	cleanup := func() {
+		if stop != nil {
+			stop()
+		}
+		sc.Close()
+	}
 
 	// Upgrade to TLS via STARTTLS if not already on an encrypted connection.
 	if c.cfg.Port != PORT_SMTPS {

@@ -165,6 +165,17 @@ func loadDotEnv(filename string) (map[string]string, error) {
 		}
 		key := strings.TrimSpace(line[:idx])
 		value := strings.TrimSpace(line[idx+1:])
+		// Strip surrounding quotes if they match.
+		if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
+			quote := value[0]
+			value = value[1 : len(value)-1]
+			// Unescape escaped quotes.
+			if quote == '"' {
+				value = strings.ReplaceAll(value, `\"`, `"`)
+			} else {
+				value = strings.ReplaceAll(value, `\'`, `'`)
+			}
+		}
 
 		env[key] = value
 	}

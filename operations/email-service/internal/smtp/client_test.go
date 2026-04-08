@@ -181,8 +181,15 @@ func TestBuildMIMEMessage_NonASCIIFilename(t *testing.T) {
 			{ContentName: "résumé.pdf", ContentType: "application/pdf", Data: []byte("data")},
 		},
 	}
-	if _, err := buildMIMEMessage(msg); err != nil {
+	raw, err := buildMIMEMessage(msg)
+	if err != nil {
 		t.Fatalf("unexpected error for non-ASCII filename: %v", err)
+	}
+	s := string(raw)
+	// RFC-2231 encoding for the filename in Content-Disposition.
+	want := "filename*=utf-8''r%C3%A9sum%C3%A9.pdf"
+	if !strings.Contains(s, want) {
+		t.Errorf("expected RFC-2231 encoded filename %q in output, but not found", want)
 	}
 }
 
