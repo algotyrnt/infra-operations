@@ -232,3 +232,42 @@ func TestBuildMIMEMessage_MultipleRecipients(t *testing.T) {
 		t.Error("multiple To recipients should be comma-separated")
 	}
 }
+
+// TestBuildMIMEMessage_InvalidAttachment verifies that malformed attachment headers return errors.
+func TestBuildMIMEMessage_InvalidAttachment(t *testing.T) {
+	tests := []struct {
+		name    string
+		att     Attachment
+		wantErr string
+	}{
+		{
+			name:    "invalid content type (multiple slashes)",
+			att:     Attachment{ContentType: "application/pdf/extra", ContentName: "test.pdf", Data: []byte("data")},
+			wantErr: "invalid attachment content type",
+		},
+		{
+			name:    "invalid content type (invalid characters)",
+			att:     Attachment{ContentType: "application / pdf", ContentName: "test.pdf", Data: []byte("data")},
+			wantErr: "invalid attachment content type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := &Message{
+				To:          []string{"to@example.com"},
+				From:        "sender@example.com",
+				Subject:     "Test",
+				HTMLBody:    "<p>test</p>",
+				Attachments: []Attachment{tt.att},
+			}
+			_, err := buildMIMEMessage(msg)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}

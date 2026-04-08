@@ -17,12 +17,15 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/wso2-open-operations/infra-operations/operations/email-service/internal/handler"
@@ -47,6 +50,7 @@ func main() {
 	idleTimeout := envOrDefaultDuration(env, "HTTP_IDLE_TIMEOUT", 120*time.Second)
 
 	maxRequestBodySize := envOrDefaultInt64(env, "MAX_REQUEST_BODY_SIZE", 10*1024*1024)
+	shutdownTimeout := envOrDefaultDuration(env, "SHUTDOWN_TIMEOUT", 30*time.Second)
 
 	client := smtpclient.New(smtpclient.Config{
 		Hostname: hostname,
@@ -75,12 +79,30 @@ func main() {
 
 	slog.Info("email-service starting", "port", httpPort, "smtp_host", hostname, "smtp_port", smtpPort, "max_req_size", maxRequestBodySize)
 
-	if err := server.ListenAndServe(); err != nil {
-		if errors.Is(err, http.ErrServerClosed) {
-			return
+	// Channel to listen for OS signals.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// Channel to catch server errors.
+	srvErr := make(chan error, 1)
+	go func() {
+		srvErr <- server.ListenAndServe()
+	}()
+
+	// Wait for either a server error or a stop signal.
+	select {
+	case err := <-srvErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server exited unexpectedly", "error", err)
+			os.Exit(1)
 		}
-		slog.Error("server exited unexpectedly", "error", err)
-		os.Exit(1)
+	case <-stop:
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			slog.Error("server shutdown error", "error", err)
+			os.Exit(1)
+		}
 	}
 }
 

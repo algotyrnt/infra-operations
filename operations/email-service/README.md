@@ -74,6 +74,7 @@ The service prioritises OS environment variables, enabling seamless deployment i
 | `HTTP_WRITE_TIMEOUT`       | Timeout to write the full response             | `10s`              |
 | `HTTP_IDLE_TIMEOUT`        | Keep-alive idle connection timeout             | `120s`             |
 | `MAX_REQUEST_BODY_SIZE`    | Maximum request body size in bytes             | `10485760` (10 MB) |
+| `SHUTDOWN_TIMEOUT`         | Graceful shutdown timeout                      | `30s`              |
 
 All timeout values accept standard Go duration strings (e.g. `5s`, `1m30s`).
 

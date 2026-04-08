@@ -41,10 +41,11 @@ const (
 	ERR_FMT_WRITE_BODY = "write message body: %w"
 
 	// MIME message construction.
-	ERR_FMT_INVALID_MIME_TYPE = "invalid MIME type %q: %w"
-	ERR_FMT_MISSING_SUBTYPE   = "invalid MIME type %q: missing subtype"
-	ERR_FMT_CONTENT_DISP      = "could not format Content-Disposition for attachment %q"
-	ERR_FMT_WRITE_ATTACHMENT  = "write attachment data for %q: %w"
+	ERR_FMT_INVALID_MIME_TYPE   = "invalid MIME type %q: %w"
+	ERR_FMT_MISSING_SUBTYPE     = "invalid MIME type %q: missing subtype"
+	ERR_FMT_INVALID_ATTACH_TYPE = "invalid attachment content type: %q"
+	ERR_FMT_CONTENT_DISP        = "could not format Content-Disposition for attachment %q"
+	ERR_FMT_WRITE_ATTACHMENT    = "write attachment data for %q: %w"
 
 	// MIME content values written by buildMIMEMessage.
 	MIME_VERSION              = "1.0"

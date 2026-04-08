@@ -264,7 +264,11 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 
 	for _, att := range msg.Attachments {
 		attHeader := textproto.MIMEHeader{}
-		attHeader.Set(HEADER_CONTENT_TYPE, att.ContentType)
+		contentType := mime.FormatMediaType(att.ContentType, nil)
+		if contentType == "" {
+			return nil, fmt.Errorf(ERR_FMT_INVALID_ATTACH_TYPE, att.ContentType)
+		}
+		attHeader.Set(HEADER_CONTENT_TYPE, contentType)
 		attHeader.Set(HEADER_CONTENT_TRANSFER_ENCODING, MIME_ENCODING_BASE64)
 		disposition := mime.FormatMediaType("attachment", map[string]string{"filename": att.ContentName})
 		if disposition == "" {
