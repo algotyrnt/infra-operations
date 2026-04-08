@@ -191,16 +191,25 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 		return fmt.Errorf(ERR_FMT_MAIL_FROM, err)
 	}
 
-	// Add all recipients (To + CC + BCC).
+	// Add unique recipients (To + CC + BCC) to the envelope.
+	seen := make(map[string]struct{})
 	allRecipients := make([]string, 0, len(msg.To)+len(msg.CC)+len(msg.BCC))
 	allRecipients = append(allRecipients, msg.To...)
 	allRecipients = append(allRecipients, msg.CC...)
 	allRecipients = append(allRecipients, msg.BCC...)
+
 	for _, rcpt := range allRecipients {
 		envelopeRcpt := rcpt
 		if parsed, err := mail.ParseAddress(rcpt); err == nil {
 			envelopeRcpt = parsed.Address
 		}
+
+		normalized := strings.ToLower(envelopeRcpt)
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+
 		if err = sc.Rcpt(envelopeRcpt); err != nil {
 			return fmt.Errorf(ERR_FMT_RCPT_TO, err)
 		}

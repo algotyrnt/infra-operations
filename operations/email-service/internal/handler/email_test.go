@@ -29,11 +29,13 @@ import (
 )
 
 type mockMailer struct {
-	err error
+	err     error
+	lastMsg *smtpclient.Message
 }
 
 // SendEmail records the mock call and returns the configured error.
 func (m *mockMailer) SendEmail(ctx context.Context, msg *smtpclient.Message) error {
+	m.lastMsg = msg
 	return m.err
 }
 
@@ -43,8 +45,9 @@ func (m *mockMailer) Ping(ctx context.Context) error {
 }
 
 // newTestHandler returns an EmailHandler using a mock Mailer with a default large limit.
-func newTestHandler(err error) *EmailHandler {
-	return NewEmailHandler(&mockMailer{err: err}, 10*1024*1024)
+func newTestHandler(err error) (*EmailHandler, *mockMailer) {
+	mock := &mockMailer{err: err}
+	return NewEmailHandler(mock, 10*1024*1024), mock
 }
 
 // doPost is a helper that executes a POST /send-email request and returns the recorder.
@@ -84,7 +87,7 @@ func assertResponse(t *testing.T, rr *httptest.ResponseRecorder, wantCode int, w
 
 // TestEmptyFromField tests when the from field is empty.
 func TestEmptyFromField(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"test@example.com"},
 		"from":     "",
@@ -96,7 +99,7 @@ func TestEmptyFromField(t *testing.T) {
 
 // TestEmptyRecipients tests when recipients are empty.
 func TestEmptyRecipients(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{},
 		"from":     "sender@example.com",
@@ -109,7 +112,7 @@ func TestEmptyRecipients(t *testing.T) {
 // TestInvalidTemplate tests when the template is invalid.
 // "A" is a single character — invalid base64 padding.
 func TestInvalidTemplate(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"test@example.com"},
 		"from":     "sender@example.com",
@@ -121,7 +124,7 @@ func TestInvalidTemplate(t *testing.T) {
 
 // TestEmptySubject tests that a blank subject is rejected.
 func TestEmptySubject(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"test@example.com"},
 		"from":     "sender@example.com",
@@ -134,7 +137,7 @@ func TestEmptySubject(t *testing.T) {
 // TestInvalidContentType tests when the content type is invalid.
 // "application.pdf" is not a valid MIME type (missing slash).
 func TestInvalidContentType(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"test@example.com"},
 		"from":     "sender@example.com",
@@ -153,7 +156,7 @@ func TestInvalidContentType(t *testing.T) {
 
 // TestInvalidBody tests that a malformed JSON body returns 400.
 func TestInvalidBody(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	req := httptest.NewRequest(http.MethodPost, "/send-email", bytes.NewBufferString("NOT JSON"))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -164,7 +167,7 @@ func TestInvalidBody(t *testing.T) {
 // TestHappyPath confirms that a valid request passes all
 // validations and successfully simulates sending via the mock.
 func TestHappyPath(t *testing.T) {
-	h := newTestHandler(nil)
+	h, mock := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"recipient@example.com"},
 		"cc":       []string{"cc@example.com"},
@@ -182,11 +185,33 @@ func TestHappyPath(t *testing.T) {
 		},
 	})
 	assertResponse(t, rr, http.StatusOK, MSG_EMAIL_SENT_SUCCESS)
+
+	if mock.lastMsg == nil {
+		t.Fatal("expected message to be captured by mock")
+	}
+	if mock.lastMsg.HTMLBody != "<h1>Hello</h1>" {
+		t.Errorf("HTMLBody: got %q, want %q", mock.lastMsg.HTMLBody, "<h1>Hello</h1>")
+	}
+	if len(mock.lastMsg.To) != 1 || mock.lastMsg.To[0] != "recipient@example.com" {
+		t.Errorf("To: got %v, want %v", mock.lastMsg.To, []string{"recipient@example.com"})
+	}
+	if len(mock.lastMsg.CC) != 1 || mock.lastMsg.CC[0] != "cc@example.com" {
+		t.Errorf("CC: got %v, want %v", mock.lastMsg.CC, []string{"cc@example.com"})
+	}
+	if len(mock.lastMsg.BCC) != 1 || mock.lastMsg.BCC[0] != "bcc@example.com" {
+		t.Errorf("BCC: got %v, want %v", mock.lastMsg.BCC, []string{"bcc@example.com"})
+	}
+	if len(mock.lastMsg.ReplyTo) != 1 || mock.lastMsg.ReplyTo[0] != "reply@example.com" {
+		t.Errorf("ReplyTo: got %v, want %v", mock.lastMsg.ReplyTo, []string{"reply@example.com"})
+	}
+	if len(mock.lastMsg.Attachments) != 1 || mock.lastMsg.Attachments[0].ContentName != "test.pdf" {
+		t.Errorf("Attachments: got %d, want 1 with name 'test.pdf'", len(mock.lastMsg.Attachments))
+	}
 }
 
 // TestSMTPError confirms that a mailer error returns 500 with a consistent message.
 func TestSMTPError(t *testing.T) {
-	h := newTestHandler(errors.New("connection refused"))
+	h, _ := newTestHandler(errors.New("connection refused"))
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"recipient@example.com"},
 		"from":     "sender@example.com",
@@ -208,7 +233,7 @@ func TestMaxBodySize(t *testing.T) {
 
 // TestInvalidFromAddress tests various invalid 'from' addresses.
 func TestInvalidFromAddress(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	tests := []struct {
 		name string
 		from string
@@ -235,7 +260,7 @@ func TestInvalidFromAddress(t *testing.T) {
 
 // TestInvalidToAddress tests an invalid 'to' address.
 func TestInvalidToAddress(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"valid@example.com", "invalid-email"},
 		"from":     "sender@example.com",
@@ -247,7 +272,7 @@ func TestInvalidToAddress(t *testing.T) {
 
 // TestInvalidCCAddress tests an invalid 'cc' address.
 func TestInvalidCCAddress(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"valid@example.com"},
 		"cc":       []string{"bad\naddress@example.com"},
@@ -260,7 +285,7 @@ func TestInvalidCCAddress(t *testing.T) {
 
 // TestInvalidBCCAddress tests an invalid 'bcc' address.
 func TestInvalidBCCAddress(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"valid@example.com"},
 		"bcc":      []string{"invalid-email"},
@@ -273,7 +298,7 @@ func TestInvalidBCCAddress(t *testing.T) {
 
 // TestInvalidReplyToAddress tests an invalid 'replyTo' address.
 func TestInvalidReplyToAddress(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":       []string{"valid@example.com"},
 		"replyTo":  []string{"invalid-email"},
@@ -286,7 +311,7 @@ func TestInvalidReplyToAddress(t *testing.T) {
 
 // TestUnknownFields tests that unknown fields in the JSON body are rejected.
 func TestUnknownFields(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	rr := doPost(t, h, map[string]any{
 		"to":            []string{"test@example.com"},
 		"from":          "sender@example.com",
@@ -299,7 +324,7 @@ func TestUnknownFields(t *testing.T) {
 
 // TestTrailingJSON tests that trailing data after a valid object is rejected.
 func TestTrailingJSON(t *testing.T) {
-	h := newTestHandler(nil)
+	h, _ := newTestHandler(nil)
 	tests := []struct {
 		name string
 		body string
