@@ -150,6 +150,7 @@ func TestBuildMIMEMessage_WithAttachment(t *testing.T) {
 		HTMLBody: "<p>See attached</p>",
 		Attachments: []Attachment{
 			{ContentName: "doc.pdf", ContentType: "application/pdf", Data: []byte{1, 2, 3, 4, 5}},
+			{ContentName: "note.txt", ContentType: "text/plain; charset=utf-8", Data: []byte("hello world")},
 		},
 	}
 	raw, err := buildMIMEMessage(msg)
@@ -159,10 +160,16 @@ func TestBuildMIMEMessage_WithAttachment(t *testing.T) {
 	s := string(raw)
 
 	if !strings.Contains(s, "application/pdf") {
-		t.Error("missing attachment MIME type")
+		t.Error("missing application/pdf attachment")
+	}
+	if !strings.Contains(s, "text/plain; charset=utf-8") {
+		t.Error("missing text/plain; charset=utf-8 attachment")
 	}
 	if !strings.Contains(s, "doc.pdf") {
-		t.Error("missing attachment filename in Content-Disposition")
+		t.Error("missing doc.pdf filename")
+	}
+	if !strings.Contains(s, "note.txt") {
+		t.Error("missing note.txt filename")
 	}
 	if !strings.Contains(s, MIME_ENCODING_BASE64) {
 		t.Error("attachment must be base64 encoded")
