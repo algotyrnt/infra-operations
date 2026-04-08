@@ -116,7 +116,7 @@ func TestInvalidTemplate(t *testing.T) {
 		"subject":  "test subject",
 		"template": "A", // invalid base64
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_TEMPLATE_DECODE_ERR)
+	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REQUEST_BODY)
 }
 
 // TestEmptySubject tests that a blank subject is rejected.

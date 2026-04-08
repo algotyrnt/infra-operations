@@ -30,7 +30,7 @@ type EmailRequest struct {
 	ReplyTo     []string          `json:"replyTo,omitempty"`
 	From        string            `json:"from"`
 	Subject     string            `json:"subject"`
-	Template    string            `json:"template"`
+	Template    []byte            `json:"template"`
 	Attachments []EmailAttachment `json:"attachments,omitempty"`
 }
 

@@ -17,7 +17,6 @@ package handler
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -123,13 +122,7 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	decoded, err := base64.StdEncoding.DecodeString(req.Template)
-	if err != nil {
-		slog.Warn(ERR_TEMPLATE_DECODE_ERR, "error", err)
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_TEMPLATE_DECODE_ERR})
-		return
-	}
-	htmlBody := string(decoded)
+	htmlBody := string(req.Template)
 
 	outMsg := &smtpclient.Message{
 		To:       append([]string(nil), req.To...),
