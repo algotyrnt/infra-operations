@@ -53,7 +53,10 @@ func newTestHandler(err error) (*EmailHandler, *mockMailer) {
 // doPost is a helper that executes a POST /send-email request and returns the recorder.
 func doPost(t *testing.T, h *EmailHandler, body any) *httptest.ResponseRecorder {
 	t.Helper()
-	b, _ := json.Marshal(body)
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("json.Marshal body: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/send-email", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
