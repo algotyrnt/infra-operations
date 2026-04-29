@@ -53,7 +53,7 @@ Sends an email with an HTML body and optional file attachments.
 
 | Status                      | Body                                     |
 | --------------------------- | ---------------------------------------- |
-| `200 OK`                    | `{"message": "Email sent successfully"}` |
+| `200 OK`                    | `{"message": "email sent successfully"}` |
 | `400 Bad Request`           | `{"message": "<validation error>"}`      |
 | `413 Payload Too Large`     | `{"message": "request body too large"}`  |
 | `500 Internal Server Error` | `{"message": "failed to send email"}`    |

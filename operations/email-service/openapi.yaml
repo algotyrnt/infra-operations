@@ -81,7 +81,7 @@ components:
         message:
           type: string
           description: A human-readable message detailing the outcome.
-          example: Email sent successfully
+          example: email sent successfully
       required:
         - message
 
