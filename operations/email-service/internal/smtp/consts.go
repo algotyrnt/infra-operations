@@ -57,6 +57,7 @@ const (
 
 	// MIME headers.
 	HEADER_MIME_VERSION              = "MIME-Version"
+	HEADER_MESSAGE_ID                = "Message-ID"
 	HEADER_DATE                      = "Date"
 	HEADER_FROM                      = "From"
 	HEADER_TO                        = "To"

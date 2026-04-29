@@ -18,9 +18,11 @@ package smtpclient
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
@@ -227,6 +229,24 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 	return wc.Close()
 }
 
+// generateMessageID returns a globally unique Message-ID per RFC 5322 §3.6.4.
+// Format: <timestamp.random@hostname>
+func generateMessageID(hostname string) (string, error) {
+	max := new(big.Int).Lsh(big.NewInt(1), 64) // 2^64
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return "", fmt.Errorf("generate Message-ID random component: %w", err)
+	}
+	ts := time.Now().UnixNano()
+	return fmt.Sprintf("<%d.%s@%s>", ts, n.Text(16), hostname), nil
+}
+
+// sanitizeHeader strips CR and LF characters from a header value to prevent
+// header injection attacks.
+func sanitizeHeader(value string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(value)
+}
+
 // buildMIMEMessage constructs a multipart/mixed MIME email message.
 func buildMIMEMessage(msg *Message) ([]byte, error) {
 	var buf bytes.Buffer
@@ -237,7 +257,21 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 		fmt.Fprintf(&buf, "%s: %s%s", key, value, CRLF)
 	}
 
+	// Extract the bare hostname from the From address for the Message-ID, falling
+	// back to "localhost" if the address cannot be parsed.
+	msgIDHost := "localhost"
+	if parsed, err := mail.ParseAddress(msg.From); err == nil {
+		if parts := strings.SplitN(parsed.Address, "@", 2); len(parts) == 2 {
+			msgIDHost = parts[1]
+		}
+	}
+	msgID, err := generateMessageID(msgIDHost)
+	if err != nil {
+		return nil, fmt.Errorf("generate Message-ID: %w", err)
+	}
+
 	writeHeader(HEADER_MIME_VERSION, MIME_VERSION)
+	writeHeader(HEADER_MESSAGE_ID, msgID)
 	writeHeader(HEADER_DATE, time.Now().UTC().Format(time.RFC1123Z))
 	writeHeader(HEADER_FROM, msg.From)
 	writeHeader(HEADER_TO, strings.Join(msg.To, ", "))
@@ -249,7 +283,7 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 		writeHeader(HEADER_REPLY_TO, strings.Join(msg.ReplyTo, ", "))
 	}
 
-	writeHeader(HEADER_SUBJECT, mime.QEncoding.Encode(MIME_CHARSET_UTF8, msg.Subject))
+	writeHeader(HEADER_SUBJECT, mime.QEncoding.Encode(MIME_CHARSET_UTF8, sanitizeHeader(msg.Subject)))
 	writeHeader(HEADER_CONTENT_TYPE, fmt.Sprintf(`%s; boundary="%s"`, MIME_TYPE_MULTIPART_MIXED, mixedWriter.Boundary()))
 
 	// Blank line separates headers from body.

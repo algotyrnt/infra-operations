@@ -278,3 +278,82 @@ func TestBuildMIMEMessage_InvalidAttachment(t *testing.T) {
 		})
 	}
 }
+
+// TestBuildMIMEMessage_MessageIDPresent verifies that a Message-ID header is always emitted.
+func TestBuildMIMEMessage_MessageIDPresent(t *testing.T) {
+	msg := &Message{
+		To:       []string{"to@example.com"},
+		From:     "sender@example.com",
+		Subject:  "Test",
+		HTMLBody: "<p>Hello</p>",
+	}
+	raw, err := buildMIMEMessage(msg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	s := string(raw)
+	if !strings.Contains(s, "Message-ID:") {
+		t.Error("output must contain a Message-ID header")
+	}
+}
+
+// TestBuildMIMEMessage_MessageIDUnique verifies that two emails get different Message-IDs.
+func TestBuildMIMEMessage_MessageIDUnique(t *testing.T) {
+	msg := func() *Message {
+		return &Message{
+			To:       []string{"to@example.com"},
+			From:     "sender@example.com",
+			Subject:  "Test",
+			HTMLBody: "<p>Hello</p>",
+		}
+	}
+
+	raw1, err := buildMIMEMessage(msg())
+	if err != nil {
+		t.Fatalf("unexpected error building first message: %v", err)
+	}
+	raw2, err := buildMIMEMessage(msg())
+	if err != nil {
+		t.Fatalf("unexpected error building second message: %v", err)
+	}
+
+	extractMsgID := func(s string) string {
+		for _, line := range strings.Split(s, "\r\n") {
+			if strings.HasPrefix(line, "Message-ID:") {
+				return strings.TrimSpace(strings.TrimPrefix(line, "Message-ID:"))
+			}
+		}
+		return ""
+	}
+
+	id1 := extractMsgID(string(raw1))
+	id2 := extractMsgID(string(raw2))
+	if id1 == "" || id2 == "" {
+		t.Fatalf("could not extract Message-ID from output (id1=%q, id2=%q)", id1, id2)
+	}
+	if id1 == id2 {
+		t.Errorf("expected unique Message-IDs, but both were %q", id1)
+	}
+}
+
+// TestBuildMIMEMessage_SubjectCRLFSanitized verifies that CR/LF in the subject
+// cannot inject extra headers into the MIME output.
+func TestBuildMIMEMessage_SubjectCRLFSanitized(t *testing.T) {
+	injectedSubject := "Hello\r\nX-Injected: evil"
+	msg := &Message{
+		To:       []string{"to@example.com"},
+		From:     "sender@example.com",
+		Subject:  injectedSubject,
+		HTMLBody: "<p>body</p>",
+	}
+	raw, err := buildMIMEMessage(msg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, line := range strings.Split(string(raw), "\r\n") {
+		if strings.HasPrefix(line, "X-Injected:") {
+			t.Errorf("CR/LF injection succeeded: found standalone header line %q", line)
+		}
+	}
+}
