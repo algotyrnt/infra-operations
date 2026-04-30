@@ -23,8 +23,8 @@ import (
 // TestNew_DefaultPort verifies that the SMTP client defaults to port 587.
 func TestNew_DefaultPort(t *testing.T) {
 	c := New(Config{Hostname: "smtp.example.com", Username: "user", Password: "pass"})
-	if c.cfg.Port != PORT_STARTTLS {
-		t.Errorf("expected default port %s, got %q", PORT_STARTTLS, c.cfg.Port)
+	if c.cfg.Port != PortSTARTTLS {
+		t.Errorf("expected default port %s, got %q", PortSTARTTLS, c.cfg.Port)
 	}
 }
 
@@ -82,11 +82,10 @@ func TestBuildMIMEMessage_HTMLOnly(t *testing.T) {
 	s := string(raw)
 
 	for _, want := range []string{
-		"MIME-Version: " + MIME_VERSION,
+		"MIME-Version: " + mimeVersion,
 		"From: sender@example.com",
 		"To: to@example.com",
-		MIME_TYPE_MULTIPART_MIXED,
-		MIME_TYPE_TEXT_HTML,
+		mimeTypeTextHTML,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("output missing %q", want)
@@ -110,10 +109,10 @@ func TestBuildMIMEMessage_CCAndReplyTo(t *testing.T) {
 	}
 	s := string(raw)
 
-	if !strings.Contains(s, "Cc: cc@example.com") {
+	if !strings.Contains(s, headerCC+": cc@example.com") {
 		t.Error("missing Cc header")
 	}
-	if !strings.Contains(s, "Reply-To: reply@example.com") {
+	if !strings.Contains(s, headerReplyTo+": reply@example.com") {
 		t.Error("missing Reply-To header")
 	}
 }
@@ -133,10 +132,10 @@ func TestBuildMIMEMessage_NoCCOrReplyTo(t *testing.T) {
 	}
 	s := string(raw)
 
-	if strings.Contains(s, "\r\nCc:") {
+	if strings.Contains(s, crlf+headerCC+":") {
 		t.Error("Cc header should not be present when CC is empty")
 	}
-	if strings.Contains(s, "\r\nReply-To:") {
+	if strings.Contains(s, crlf+headerReplyTo+":") {
 		t.Error("Reply-To header should not be present when ReplyTo is empty")
 	}
 }
@@ -171,7 +170,7 @@ func TestBuildMIMEMessage_WithAttachment(t *testing.T) {
 	if !strings.Contains(s, "note.txt") {
 		t.Error("missing note.txt filename")
 	}
-	if !strings.Contains(s, MIME_ENCODING_BASE64) {
+	if !strings.Contains(s, mimeEncodingBase64) {
 		t.Error("attachment must be base64 encoded")
 	}
 }
@@ -216,7 +215,7 @@ func TestBuildMIMEMessage_SubjectQEncoded(t *testing.T) {
 	s := string(raw)
 
 	// Q-encoded subjects begin with =?<charset>?
-	if !strings.Contains(s, "=?"+MIME_CHARSET_UTF8+"?") {
+	if !strings.Contains(s, "=?"+mimeCharsetUTF8+"?") {
 		t.Error("non-ASCII subject should be Q-encoded")
 	}
 }
@@ -333,6 +332,11 @@ func TestBuildMIMEMessage_MessageIDUnique(t *testing.T) {
 	}
 	if id1 == id2 {
 		t.Errorf("expected unique Message-IDs, but both were %q", id1)
+	}
+	for _, id := range []string{id1, id2} {
+		if !strings.HasPrefix(id, "<") || !strings.HasSuffix(id, ">") || !strings.Contains(id, "@") {
+			t.Errorf("Message-ID %q does not match RFC 5322 <local@domain> format", id)
+		}
 	}
 }
 

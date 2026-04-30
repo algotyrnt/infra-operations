@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"math/big"
 	"mime"
 	"mime/multipart"
@@ -31,8 +32,13 @@ import (
 	"net/smtp"
 	"net/textproto"
 	"strings"
+	"sync"
 	"time"
 )
+
+// headerSanitizer is built once at package init to avoid rebuilding its
+// internal trie on every sanitizeHeader call.
+var headerSanitizer = strings.NewReplacer("\r", "", "\n", "")
 
 // Attachment represents a file attached to an email.
 type Attachment struct {
@@ -63,15 +69,41 @@ type Config struct {
 
 // Client is a reusable SMTP sender.
 type Client struct {
-	cfg Config
+	cfg         Config
+	healthMu    sync.Mutex
+	lastHealthy time.Time
+}
+
+// lineWrapper wraps an io.Writer and inserts CRLF after every lineLen bytes
+// written.
+type lineWrapper struct {
+	w       io.Writer
+	lineLen int
+	col     int
 }
 
 // New creates a new Client using the provided Config.
 func New(cfg Config) *Client {
 	if cfg.Port == "" {
-		cfg.Port = PORT_STARTTLS
+		cfg.Port = PortSTARTTLS
 	}
 	return &Client{cfg: cfg}
+}
+
+// clone returns a deep copy of the Message.
+func (m *Message) clone() Message {
+	c := *m
+	c.To = append([]string(nil), m.To...)
+	c.CC = append([]string(nil), m.CC...)
+	c.BCC = append([]string(nil), m.BCC...)
+	c.ReplyTo = append([]string(nil), m.ReplyTo...)
+	c.Attachments = make([]Attachment, len(m.Attachments))
+	for i, a := range m.Attachments {
+		ac := a
+		ac.Data = append([]byte(nil), a.Data...)
+		c.Attachments[i] = ac
+	}
+	return c
 }
 
 // dialAndAuth dials the SMTP server, upgrades to TLS via STARTTLS, and
@@ -87,20 +119,20 @@ func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) 
 		MinVersion: tls.VersionTLS12,
 	}
 
-	if c.cfg.Port == PORT_SMTPS {
+	if c.cfg.Port == PortSMTPS {
 		// Immediate TLS dial for port 465.
 		var d tls.Dialer
 		d.Config = tlsCfg
 		conn, err = d.DialContext(ctx, "tcp", addr)
 		if err != nil {
-			return nil, nil, fmt.Errorf(ERR_FMT_TLS_DIAL, err)
+			return nil, nil, fmt.Errorf(errFmtTLSDial, err)
 		}
 	} else {
 		// Regular TCP dial followed by STARTTLS (standard for 587).
 		var d net.Dialer
 		conn, err = d.DialContext(ctx, "tcp", addr)
 		if err != nil {
-			return nil, nil, fmt.Errorf(ERR_FMT_DIAL, err)
+			return nil, nil, fmt.Errorf(errFmtDial, err)
 		}
 	}
 
@@ -111,69 +143,88 @@ func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) 
 		}
 	}
 	stop := context.AfterFunc(ctx, func() {
-		conn.SetDeadline(time.Now())
+		conn.SetDeadline(time.Now()) //nolint:errcheck
 	})
 
 	sc, err := smtp.NewClient(conn, c.cfg.Hostname)
 	if err != nil {
 		stop()
 		conn.Close()
-		return nil, nil, fmt.Errorf(ERR_FMT_NEW_CLIENT, err)
+		return nil, nil, fmt.Errorf(errFmtNewClient, err)
 	}
 
 	cleanup := func() {
 		if stop != nil {
 			stop()
 		}
-		sc.Close()
+		_ = sc.Quit()
 	}
 
 	// Upgrade to TLS via STARTTLS if not already on an encrypted connection.
-	if c.cfg.Port != PORT_SMTPS {
+	if c.cfg.Port != PortSMTPS {
 		if err = sc.StartTLS(tlsCfg); err != nil {
 			cleanup()
-			return nil, nil, fmt.Errorf(ERR_FMT_STARTTLS, err)
+			return nil, nil, fmt.Errorf(errFmtSTARTTLS, err)
 		}
 	}
 
 	auth := smtp.PlainAuth("", c.cfg.Username, c.cfg.Password, c.cfg.Hostname)
 	if err = sc.Auth(auth); err != nil {
 		cleanup()
-		return nil, nil, fmt.Errorf(ERR_FMT_AUTH, err)
+		return nil, nil, fmt.Errorf(errFmtAuth, err)
 	}
 
 	return sc, cleanup, nil
 }
 
 // Ping verifies that the SMTP server is reachable and credentials are accepted.
-// It performs a full handshake and returns nil if the server is healthy.
+// Results are cached for defaultHealthTTL to avoid hammering the server on
+// every liveness probe. It performs a full handshake on cache miss.
 func (c *Client) Ping(ctx context.Context) error {
+	c.healthMu.Lock()
+	if time.Since(c.lastHealthy) < defaultHealthTTL {
+		c.healthMu.Unlock()
+		return nil
+	}
+	c.healthMu.Unlock()
+
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, DEFAULT_PING_TIMEOUT)
+		ctx, cancel = context.WithTimeout(ctx, defaultPingTimeout)
 		defer cancel()
 	}
 
-	sc, cleanup, err := c.dialAndAuth(ctx)
+	_, cleanup, err := c.dialAndAuth(ctx)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	return sc.Quit()
+	c.healthMu.Lock()
+	c.lastHealthy = time.Now()
+	c.healthMu.Unlock()
+
+	return nil
 }
 
-// SendEmail builds a multipart/mixed MIME message and sends it via STARTTLS.
+// SendEmail snapshots msg immediately on entry and sends it.
+// Concurrent calls are safe; each send uses its own connection.
 func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
-	raw, err := buildMIMEMessage(msg)
-	if err != nil {
-		return fmt.Errorf(ERR_FMT_BUILD_MIME, err)
+	if msg == nil {
+		return fmt.Errorf("SendEmail: message must not be nil")
 	}
+
+	snap := msg.clone()
 
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, DEFAULT_SEND_TIMEOUT)
+		ctx, cancel = context.WithTimeout(ctx, defaultSendTimeout)
 		defer cancel()
+	}
+
+	raw, err := buildMIMEMessage(&snap)
+	if err != nil {
+		return fmt.Errorf(errFmtBuildMIME, err)
 	}
 
 	sc, cleanup, err := c.dialAndAuth(ctx)
@@ -183,22 +234,22 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 	defer cleanup()
 
 	// Parse From address for envelope.
-	envelopeFrom := msg.From
-	if parsed, err := mail.ParseAddress(msg.From); err == nil {
+	envelopeFrom := snap.From
+	if parsed, err := mail.ParseAddress(snap.From); err == nil {
 		envelopeFrom = parsed.Address
 	}
 
 	// Set envelope sender.
 	if err = sc.Mail(envelopeFrom); err != nil {
-		return fmt.Errorf(ERR_FMT_MAIL_FROM, err)
+		return fmt.Errorf(errFmtMailFrom, err)
 	}
 
 	// Add unique recipients (To + CC + BCC) to the envelope.
 	seen := make(map[string]struct{})
-	allRecipients := make([]string, 0, len(msg.To)+len(msg.CC)+len(msg.BCC))
-	allRecipients = append(allRecipients, msg.To...)
-	allRecipients = append(allRecipients, msg.CC...)
-	allRecipients = append(allRecipients, msg.BCC...)
+	allRecipients := make([]string, 0, len(snap.To)+len(snap.CC)+len(snap.BCC))
+	allRecipients = append(allRecipients, snap.To...)
+	allRecipients = append(allRecipients, snap.CC...)
+	allRecipients = append(allRecipients, snap.BCC...)
 
 	for _, rcpt := range allRecipients {
 		envelopeRcpt := rcpt
@@ -213,18 +264,18 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 		seen[normalized] = struct{}{}
 
 		if err = sc.Rcpt(envelopeRcpt); err != nil {
-			return fmt.Errorf(ERR_FMT_RCPT_TO, err)
+			return fmt.Errorf(errFmtRcptTo, err)
 		}
 	}
 
 	// Stream the message body.
 	wc, err := sc.Data()
 	if err != nil {
-		return fmt.Errorf(ERR_FMT_DATA, err)
+		return fmt.Errorf(errFmtData, err)
 	}
 	if _, err = wc.Write(raw); err != nil {
 		wc.Close()
-		return fmt.Errorf(ERR_FMT_WRITE_BODY, err)
+		return fmt.Errorf(errFmtWriteBody, err)
 	}
 	return wc.Close()
 }
@@ -244,17 +295,48 @@ func generateMessageID(hostname string) (string, error) {
 // sanitizeHeader strips CR and LF characters from a header value to prevent
 // header injection attacks.
 func sanitizeHeader(value string) string {
-	return strings.NewReplacer("\r", "", "\n", "").Replace(value)
+	return headerSanitizer.Replace(value)
 }
 
-// buildMIMEMessage constructs a multipart/mixed MIME email message.
-func buildMIMEMessage(msg *Message) ([]byte, error) {
-	var buf bytes.Buffer
+// Write implements io.Writer for lineWrapper by wrapping io.Writer.
+// It inserts CRLF every lineLen bytes written.
+func (lw *lineWrapper) Write(p []byte) (int, error) {
+	total := 0
+	for len(p) > 0 {
+		avail := lw.lineLen - lw.col
+		if avail <= 0 {
+			if _, err := lw.w.Write([]byte(crlf)); err != nil {
+				return total, err
+			}
+			lw.col = 0
+			avail = lw.lineLen
+		}
+		n := avail
+		if n > len(p) {
+			n = len(p)
+		}
+		written, err := lw.w.Write(p[:n])
+		total += written
+		lw.col += written
+		p = p[written:]
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
 
-	mixedWriter := multipart.NewWriter(&buf)
+// buildMIMEMessage constructs a MIME email message.
+func buildMIMEMessage(msg *Message) ([]byte, error) {
+	estimatedSize := 512 + len(msg.HTMLBody)
+	for _, a := range msg.Attachments {
+		estimatedSize += base64.StdEncoding.EncodedLen(len(a.Data))
+	}
+	var buf bytes.Buffer
+	buf.Grow(estimatedSize)
 
 	writeHeader := func(key, value string) {
-		fmt.Fprintf(&buf, "%s: %s%s", key, value, CRLF)
+		fmt.Fprintf(&buf, "%s: %s%s", key, value, crlf)
 	}
 
 	// Extract the bare hostname from the From address for the Message-ID, falling
@@ -270,28 +352,42 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 		return nil, fmt.Errorf("generate Message-ID: %w", err)
 	}
 
-	writeHeader(HEADER_MIME_VERSION, MIME_VERSION)
-	writeHeader(HEADER_MESSAGE_ID, msgID)
-	writeHeader(HEADER_DATE, time.Now().UTC().Format(time.RFC1123Z))
-	writeHeader(HEADER_FROM, msg.From)
-	writeHeader(HEADER_TO, strings.Join(msg.To, ", "))
+	writeHeader(headerMIMEVersion, mimeVersion)
+	writeHeader(headerMessageID, msgID)
+	writeHeader(headerDate, time.Now().UTC().Format(time.RFC1123Z))
+	writeHeader(headerFrom, sanitizeHeader(msg.From))
+	writeHeader(headerTo, sanitizeHeader(strings.Join(msg.To, ", ")))
 
 	if len(msg.CC) > 0 {
-		writeHeader(HEADER_CC, strings.Join(msg.CC, ", "))
+		writeHeader(headerCC, sanitizeHeader(strings.Join(msg.CC, ", ")))
 	}
 	if len(msg.ReplyTo) > 0 {
-		writeHeader(HEADER_REPLY_TO, strings.Join(msg.ReplyTo, ", "))
+		writeHeader(headerReplyTo, sanitizeHeader(strings.Join(msg.ReplyTo, ", ")))
 	}
 
-	writeHeader(HEADER_SUBJECT, mime.QEncoding.Encode(MIME_CHARSET_UTF8, sanitizeHeader(msg.Subject)))
-	writeHeader(HEADER_CONTENT_TYPE, fmt.Sprintf(`%s; boundary="%s"`, MIME_TYPE_MULTIPART_MIXED, mixedWriter.Boundary()))
+	writeHeader(headerSubject, mime.QEncoding.Encode(mimeCharsetUTF8, sanitizeHeader(msg.Subject)))
+
+	if len(msg.Attachments) == 0 {
+		writeHeader(headerContentType, mimeTypeTextHTML+`; charset="`+mimeCharsetUTF8+`"`)
+		writeHeader(headerContentTransferEncoding, mimeEncodingQP)
+		buf.WriteString(crlf)
+		qpWriter := quotedprintable.NewWriter(&buf)
+		if _, err = qpWriter.Write([]byte(msg.HTMLBody)); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), qpWriter.Close()
+	}
+
+	// One or more attachments — wrap everything in multipart/mixed.
+	mixedWriter := multipart.NewWriter(&buf)
+	writeHeader(headerContentType, fmt.Sprintf(`%s; boundary="%s"`, mimeTypeMultipartMixed, mixedWriter.Boundary()))
 
 	// Blank line separates headers from body.
-	buf.WriteString(CRLF)
+	buf.WriteString(crlf)
 
 	htmlPartHeader := textproto.MIMEHeader{}
-	htmlPartHeader.Set(HEADER_CONTENT_TYPE, MIME_TYPE_TEXT_HTML+`; charset="`+MIME_CHARSET_UTF8+`"`)
-	htmlPartHeader.Set(HEADER_CONTENT_TRANSFER_ENCODING, MIME_ENCODING_QP)
+	htmlPartHeader.Set(headerContentType, mimeTypeTextHTML+`; charset="`+mimeCharsetUTF8+`"`)
+	htmlPartHeader.Set(headerContentTransferEncoding, mimeEncodingQP)
 
 	htmlPart, err := mixedWriter.CreatePart(htmlPartHeader)
 	if err != nil {
@@ -309,34 +405,37 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 		attHeader := textproto.MIMEHeader{}
 		mediatype, params, err := mime.ParseMediaType(att.ContentType)
 		if err != nil {
-			return nil, fmt.Errorf(ERR_FMT_INVALID_ATTACH_TYPE, att.ContentType)
+			return nil, fmt.Errorf(errFmtInvalidAttachType, att.ContentType)
 		}
 		contentType := mime.FormatMediaType(mediatype, params)
 		if contentType == "" {
-			return nil, fmt.Errorf(ERR_FMT_INVALID_ATTACH_TYPE, att.ContentType)
+			return nil, fmt.Errorf(errFmtInvalidAttachType, att.ContentType)
 		}
-		attHeader.Set(HEADER_CONTENT_TYPE, contentType)
-		attHeader.Set(HEADER_CONTENT_TRANSFER_ENCODING, MIME_ENCODING_BASE64)
+		attHeader.Set(headerContentType, contentType)
+		attHeader.Set(headerContentTransferEncoding, mimeEncodingBase64)
 		disposition := mime.FormatMediaType("attachment", map[string]string{"filename": att.ContentName})
 		if disposition == "" {
-			return nil, fmt.Errorf(ERR_FMT_CONTENT_DISP, att.ContentName)
+			return nil, fmt.Errorf(errFmtContentDisp, att.ContentName)
 		}
-		attHeader.Set(HEADER_CONTENT_DISPOSITION, disposition)
+		attHeader.Set(headerContentDisposition, disposition)
 
 		attPart, err := mixedWriter.CreatePart(attHeader)
 		if err != nil {
 			return nil, err
 		}
 
-		encoded := base64.StdEncoding.EncodeToString(att.Data)
-		// RFC 2045 §6.8: wrap base64 at 76-character lines.
-		for i := 0; i < len(encoded); i += 76 {
-			end := i + 76
-			if end > len(encoded) {
-				end = len(encoded)
-			}
-			if _, werr := attPart.Write([]byte(encoded[i:end] + CRLF)); werr != nil {
-				return nil, fmt.Errorf(ERR_FMT_WRITE_ATTACHMENT, att.ContentName, werr)
+		lw := &lineWrapper{w: attPart, lineLen: 76}
+		enc := base64.NewEncoder(base64.StdEncoding, lw)
+		if _, err = enc.Write(att.Data); err != nil {
+			return nil, fmt.Errorf(errFmtWriteAttachment, att.ContentName, err)
+		}
+		if err = enc.Close(); err != nil {
+			return nil, fmt.Errorf(errFmtWriteAttachment, att.ContentName, err)
+		}
+		// Terminate the final (potentially partial) line.
+		if lw.col > 0 {
+			if _, err = attPart.Write([]byte(crlf)); err != nil {
+				return nil, fmt.Errorf(errFmtWriteAttachment, att.ContentName, err)
 			}
 		}
 	}
@@ -353,11 +452,11 @@ func buildMIMEMessage(msg *Message) ([]byte, error) {
 func ValidateMIMEType(contentType string) error {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return fmt.Errorf(ERR_FMT_INVALID_MIME_TYPE, contentType, err)
+		return fmt.Errorf(errFmtInvalidMIMEType, contentType, err)
 	}
 	// mediaType must contain exactly one "/" separating type and subtype.
 	if !strings.Contains(mediaType, "/") {
-		return fmt.Errorf(ERR_FMT_MISSING_SUBTYPE, contentType)
+		return fmt.Errorf(errFmtMissingSubtype, contentType)
 	}
 	return nil
 }

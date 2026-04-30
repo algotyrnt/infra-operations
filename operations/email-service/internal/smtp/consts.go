@@ -18,56 +18,61 @@ package smtpclient
 import "time"
 
 const (
-	// Default context timeouts applied when the caller supplies no deadline.
-	DEFAULT_PING_TIMEOUT = 10 * time.Second
-	DEFAULT_SEND_TIMEOUT = 30 * time.Second
+	// defaultPingTimeout and defaultSendTimeout are applied when the caller
+	// supplies no deadline on the context.
+	defaultPingTimeout = 10 * time.Second
+	defaultSendTimeout = 30 * time.Second
 
-	// SMTP ports.
-	PORT_SMTPS    = "465"
-	PORT_STARTTLS = "587"
+	// defaultHealthTTL is how long a successful SMTP health-check result is
+	// cached to avoid hammering the server on every liveness probe.
+	defaultHealthTTL = 30 * time.Second
 
-	// Connection and handshake — shared by Ping and SendEmail.
-	ERR_FMT_DIAL       = "dial SMTP server: %w"
-	ERR_FMT_TLS_DIAL   = "TLS dial SMTP server: %w"
-	ERR_FMT_NEW_CLIENT = "create SMTP client: %w"
-	ERR_FMT_STARTTLS   = "STARTTLS: %w"
-	ERR_FMT_AUTH       = "SMTP auth: %w"
+	// SMTP ports. Exported because callers (e.g. main) reference them.
+	PortSMTPS    = "465"
+	PortSTARTTLS = "587"
+
+	// Connection and handshake errors — shared by Ping and SendEmail.
+	errFmtDial      = "dial SMTP server: %w"
+	errFmtTLSDial   = "TLS dial SMTP server: %w"
+	errFmtNewClient = "create SMTP client: %w"
+	errFmtSTARTTLS  = "STARTTLS: %w"
+	errFmtAuth      = "SMTP auth: %w"
 
 	// SendEmail envelope and data phases.
-	ERR_FMT_BUILD_MIME = "build MIME message: %w"
-	ERR_FMT_MAIL_FROM  = "MAIL FROM: %w"
-	ERR_FMT_RCPT_TO    = "RCPT TO: %w"
-	ERR_FMT_DATA       = "DATA command: %w"
-	ERR_FMT_WRITE_BODY = "write message body: %w"
+	errFmtBuildMIME = "build MIME message: %w"
+	errFmtMailFrom  = "MAIL FROM: %w"
+	errFmtRcptTo    = "RCPT TO: %w"
+	errFmtData      = "DATA command: %w"
+	errFmtWriteBody = "write message body: %w"
 
 	// MIME message construction.
-	ERR_FMT_INVALID_MIME_TYPE   = "invalid MIME type %q: %w"
-	ERR_FMT_MISSING_SUBTYPE     = "invalid MIME type %q: missing subtype"
-	ERR_FMT_INVALID_ATTACH_TYPE = "invalid attachment content type: %q"
-	ERR_FMT_CONTENT_DISP        = "could not format Content-Disposition for attachment %q"
-	ERR_FMT_WRITE_ATTACHMENT    = "write attachment data for %q: %w"
+	errFmtInvalidMIMEType   = "invalid MIME type %q: %w"
+	errFmtMissingSubtype    = "invalid MIME type %q: missing subtype"
+	errFmtInvalidAttachType = "invalid attachment content type: %q"
+	errFmtContentDisp       = "could not format Content-Disposition for attachment %q"
+	errFmtWriteAttachment   = "write attachment data for %q: %w"
 
 	// MIME content values written by buildMIMEMessage.
-	MIME_VERSION              = "1.0"
-	MIME_CHARSET_UTF8         = "UTF-8"
-	MIME_TYPE_MULTIPART_MIXED = "multipart/mixed"
-	MIME_TYPE_TEXT_HTML       = "text/html"
-	MIME_ENCODING_QP          = "quoted-printable"
-	MIME_ENCODING_BASE64      = "base64"
+	mimeVersion            = "1.0"
+	mimeCharsetUTF8        = "UTF-8"
+	mimeTypeMultipartMixed = "multipart/mixed"
+	mimeTypeTextHTML       = "text/html"
+	mimeEncodingQP         = "quoted-printable"
+	mimeEncodingBase64     = "base64"
 
 	// MIME headers.
-	HEADER_MIME_VERSION              = "MIME-Version"
-	HEADER_MESSAGE_ID                = "Message-ID"
-	HEADER_DATE                      = "Date"
-	HEADER_FROM                      = "From"
-	HEADER_TO                        = "To"
-	HEADER_CC                        = "Cc"
-	HEADER_REPLY_TO                  = "Reply-To"
-	HEADER_SUBJECT                   = "Subject"
-	HEADER_CONTENT_TYPE              = "Content-Type"
-	HEADER_CONTENT_TRANSFER_ENCODING = "Content-Transfer-Encoding"
-	HEADER_CONTENT_DISPOSITION       = "Content-Disposition"
+	headerMIMEVersion             = "MIME-Version"
+	headerMessageID               = "Message-ID"
+	headerDate                    = "Date"
+	headerFrom                    = "From"
+	headerTo                      = "To"
+	headerCC                      = "Cc"
+	headerReplyTo                 = "Reply-To"
+	headerSubject                 = "Subject"
+	headerContentType             = "Content-Type"
+	headerContentTransferEncoding = "Content-Transfer-Encoding"
+	headerContentDisposition      = "Content-Disposition"
 
-	// Delimiters.
-	CRLF = "\r\n"
+	// crlf is the MIME line terminator per RFC 5322.
+	crlf = "\r\n"
 )
