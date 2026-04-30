@@ -19,6 +19,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -33,15 +34,32 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("startup failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	env, err := loadDotEnv(".env")
 	if err != nil {
 		slog.Warn("failed to load .env file", "error", err)
 	}
 
-	hostname := mustEnv(env, "SMTP_HOSTNAME")
-	username := mustEnv(env, "SMTP_USERNAME")
-	password := mustEnv(env, "SMTP_PASSWORD")
-	smtpPort := envOrDefault(env, "SMTP_PORT", smtpclient.PORT_STARTTLS)
+	hostname, err := requireEnv(env, "SMTP_HOSTNAME")
+	if err != nil {
+		return err
+	}
+	username, err := requireEnv(env, "SMTP_USERNAME")
+	if err != nil {
+		return err
+	}
+	password, err := requireEnv(env, "SMTP_PASSWORD")
+	if err != nil {
+		return err
+	}
+
+	smtpPort := envOrDefault(env, "SMTP_PORT", smtpclient.PortSTARTTLS)
 	httpPort := envOrDefault(env, "PORT", "9090")
 
 	readHeaderTimeout := envOrDefaultDuration(env, "HTTP_READ_HEADER_TIMEOUT", 5*time.Second)
@@ -93,37 +111,36 @@ func main() {
 	select {
 	case err := <-srvErr:
 		if !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("server exited unexpectedly", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("server exited unexpectedly: %w", err)
 		}
 	case <-stop:
 		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
-			slog.Error("server shutdown error", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("server shutdown error: %w", err)
 		}
 	}
+
+	return nil
 }
 
 // lookupEnv returns the value for key, preferring the OS environment over
-// the dotenv map. Returns an empty string if the key is absent from both.
+// the dotenv map.
 func lookupEnv(env map[string]string, key string) string {
-	if v := os.Getenv(key); v != "" {
+	if v, ok := os.LookupEnv(key); ok {
 		return v
 	}
 	return env[key]
 }
 
-// mustEnv returns the value of the named config key or exits with
-// a clear error message if it is not set.
-func mustEnv(env map[string]string, key string) string {
+// requireEnv returns the value of the named config key or an error if it is
+// not set.
+func requireEnv(env map[string]string, key string) (string, error) {
 	v := lookupEnv(env, key)
 	if v == "" {
-		slog.Error("required config not set", "key", key)
-		os.Exit(1)
+		return "", fmt.Errorf("required config not set: %s", key)
 	}
-	return v
+	return v, nil
 }
 
 // envOrDefault returns the value of the named config key, or
@@ -170,7 +187,7 @@ func loadDotEnv(filename string) (map[string]string, error) {
 	env := make(map[string]string)
 	f, err := os.Open(filename)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return env, nil // file absent — return empty map
 		}
 		return nil, err
