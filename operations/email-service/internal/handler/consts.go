@@ -17,29 +17,29 @@ package handler
 
 const (
 	// Generic HTTP errors.
-	ERR_REQUEST_BODY_TOO_LARGE = "request body too large"
-	ERR_INVALID_REQUEST_BODY   = "invalid request body"
+	errRequestBodyTooLarge = "request body too large"
+	errInvalidRequestBody  = "invalid request body"
 
 	// HTTP headers and values.
-	HEADER_CONTENT_TYPE = "Content-Type"
-	CONTENT_TYPE_JSON   = "application/json"
+	headerContentType = "Content-Type"
+	contentTypeJSON   = "application/json"
 
 	// Email validation errors.
-	ERR_RECIPIENTS_REQUIRED  = "at least one recipient is required"
-	ERR_FROM_REQUIRED        = "'from' address is required"
-	ERR_INVALID_FROM         = "invalid 'from' address"
-	ERR_INVALID_TO           = "invalid 'to' address"
-	ERR_INVALID_CC           = "invalid 'cc' address"
-	ERR_INVALID_BCC          = "invalid 'bcc' address"
-	ERR_INVALID_REPLY_TO     = "invalid 'replyTo' address"
-	ERR_SUBJECT_REQUIRED     = "'subject' is required"
-	ERR_INVALID_CONTENT_TYPE = "unsupported attachment content type"
+	errRecipientsRequired = "at least one recipient is required"
+	errFromRequired       = "'from' address is required"
+	errInvalidFrom        = "invalid 'from' address"
+	errInvalidTo          = "invalid 'to' address"
+	errInvalidCC          = "invalid 'cc' address"
+	errInvalidBCC         = "invalid 'bcc' address"
+	errInvalidReplyTo     = "invalid 'replyTo' address"
+	errSubjectRequired    = "'subject' is required"
+	errInvalidContentType = "unsupported attachment content type"
 
 	// Email send outcomes.
-	ERR_EMAIL_SEND_ERR     = "failed to send email"
-	MSG_EMAIL_SENT_SUCCESS = "email sent successfully"
+	errEmailSendErr     = "failed to send email"
+	msgEmailSentSuccess = "email sent successfully"
 
 	// Health-check status values.
-	STATUS_HEALTHY   HealthStatus = "healthy"
-	STATUS_UNHEALTHY HealthStatus = "unhealthy"
+	StatusHealthy   HealthStatus = "healthy"
+	StatusUnhealthy HealthStatus = "unhealthy"
 )

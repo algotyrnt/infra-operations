@@ -37,13 +37,13 @@ func TestHealthCheck(t *testing.T) {
 			name:             "Healthy status",
 			mockErr:          nil,
 			wantStatus:       http.StatusOK,
-			wantHealthStatus: STATUS_HEALTHY,
+			wantHealthStatus: StatusHealthy,
 		},
 		{
 			name:             "Unhealthy status",
 			mockErr:          errors.New("ping failed"),
 			wantStatus:       http.StatusServiceUnavailable,
-			wantHealthStatus: STATUS_UNHEALTHY,
+			wantHealthStatus: StatusUnhealthy,
 		},
 	}
 
@@ -70,7 +70,7 @@ func TestHealthCheck(t *testing.T) {
 
 			// Verify JSON serialization
 			var wantStr string
-			if tt.wantHealthStatus == STATUS_HEALTHY {
+			if tt.wantHealthStatus == StatusHealthy {
 				wantStr = "healthy"
 			} else {
 				wantStr = "unhealthy"

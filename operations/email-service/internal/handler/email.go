@@ -60,64 +60,64 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	if err := dec.Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			slog.Warn(ERR_REQUEST_BODY_TOO_LARGE, "error", err, "limit", h.maxRequestBodySize)
-			writeJSON(w, http.StatusRequestEntityTooLarge, ResponseMessage{Message: ERR_REQUEST_BODY_TOO_LARGE})
+			slog.Warn(errRequestBodyTooLarge, "error", err, "limit", h.maxRequestBodySize)
+			writeJSON(w, http.StatusRequestEntityTooLarge, ResponseMessage{Message: errRequestBodyTooLarge})
 			return
 		}
 
 		slog.Warn("failed to decode request body", "error", err)
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REQUEST_BODY})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errInvalidRequestBody})
 		return
 	}
 
 	// Check for trailing JSON data.
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		slog.Warn("failed to decode request body", "error", "trailing JSON data")
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REQUEST_BODY})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errInvalidRequestBody})
 		return
 	}
 
 	if len(req.To) == 0 {
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_RECIPIENTS_REQUIRED})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errRecipientsRequired})
 		return
 	}
 
 	if strings.TrimSpace(req.From) == "" {
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_FROM_REQUIRED})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errFromRequired})
 		return
 	}
 
 	if strings.TrimSpace(req.Subject) == "" {
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_SUBJECT_REQUIRED})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errSubjectRequired})
 		return
 	}
 
 	// Validate addresses to prevent CR/LF injection and ensure proper format.
 	if err := validateAddress(req.From); err != nil {
-		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_FROM})
+		writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errInvalidFrom})
 		return
 	}
 	for _, addr := range req.To {
 		if err := validateAddress(addr); err != nil {
-			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_TO})
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errInvalidTo})
 			return
 		}
 	}
 	for _, addr := range req.CC {
 		if err := validateAddress(addr); err != nil {
-			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_CC})
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errInvalidCC})
 			return
 		}
 	}
 	for _, addr := range req.BCC {
 		if err := validateAddress(addr); err != nil {
-			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_BCC})
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errInvalidBCC})
 			return
 		}
 	}
 	for _, addr := range req.ReplyTo {
 		if err := validateAddress(addr); err != nil {
-			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_REPLY_TO})
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errInvalidReplyTo})
 			return
 		}
 	}
@@ -136,8 +136,8 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 
 	for _, att := range req.Attachments {
 		if err := smtpclient.ValidateMIMEType(att.ContentType); err != nil {
-			slog.Warn(ERR_INVALID_CONTENT_TYPE, "contentType", att.ContentType, "error", err)
-			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: ERR_INVALID_CONTENT_TYPE})
+			slog.Warn(errInvalidContentType, "contentType", att.ContentType, "error", err)
+			writeJSON(w, http.StatusBadRequest, ResponseMessage{Message: errInvalidContentType})
 			return
 		}
 
@@ -149,20 +149,26 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.client.SendEmail(r.Context(), outMsg); err != nil {
-		slog.Error(ERR_EMAIL_SEND_ERR, "error", err)
-		writeJSON(w, http.StatusInternalServerError, ResponseMessage{Message: ERR_EMAIL_SEND_ERR})
+		slog.Error(errEmailSendErr, "error", err)
+		writeJSON(w, http.StatusInternalServerError, ResponseMessage{Message: errEmailSendErr})
 		return
 	}
 
-	slog.Info(MSG_EMAIL_SENT_SUCCESS)
-	writeJSON(w, http.StatusOK, ResponseMessage{Message: MSG_EMAIL_SENT_SUCCESS})
+	slog.Info(msgEmailSentSuccess)
+	writeJSON(w, http.StatusOK, ResponseMessage{Message: msgEmailSentSuccess})
 }
 
-// writeJSON encodes v as JSON and writes it with the given HTTP status code.
+// writeJSON marshals v as JSON and writes it with the given HTTP status code.
 func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON)
+	b, err := json.Marshal(v)
+	if err != nil {
+		slog.Error("failed to marshal JSON response", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
+	if _, err = w.Write(b); err != nil {
 		slog.Error("failed to write JSON response", "error", err)
 	}
 }
@@ -172,9 +178,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func validateAddress(addr string) error {
 	if strings.ContainsAny(addr, "\r\n") {
 		return errors.New("address contains CR/LF characters")
-	}
-	if strings.TrimSpace(addr) != addr {
-		return errors.New("address contains leading or trailing whitespace")
 	}
 	_, err := mail.ParseAddress(addr)
 	return err

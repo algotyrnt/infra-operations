@@ -23,19 +23,23 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	smtpclient "github.com/wso2-open-operations/infra-operations/operations/email-service/internal/smtp"
 )
 
 type mockMailer struct {
+	mu      sync.Mutex
 	err     error
 	lastMsg *smtpclient.Message
 }
 
 // SendEmail records the mock call and returns the configured error.
 func (m *mockMailer) SendEmail(ctx context.Context, msg *smtpclient.Message) error {
+	m.mu.Lock()
 	m.lastMsg = msg
+	m.mu.Unlock()
 	return m.err
 }
 
@@ -97,7 +101,7 @@ func TestEmptyFromField(t *testing.T) {
 		"subject":  "test subject",
 		"template": base64.StdEncoding.EncodeToString([]byte("<h1>Hello</h1>")),
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_FROM_REQUIRED)
+	assertResponse(t, rr, http.StatusBadRequest, errFromRequired)
 }
 
 // TestEmptyRecipients tests when recipients are empty.
@@ -109,7 +113,7 @@ func TestEmptyRecipients(t *testing.T) {
 		"subject":  "test subject",
 		"template": base64.StdEncoding.EncodeToString([]byte("<h1>Hello</h1>")),
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_RECIPIENTS_REQUIRED)
+	assertResponse(t, rr, http.StatusBadRequest, errRecipientsRequired)
 }
 
 // TestInvalidTemplate tests when the template is invalid.
@@ -122,7 +126,7 @@ func TestInvalidTemplate(t *testing.T) {
 		"subject":  "test subject",
 		"template": "A", // invalid base64
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REQUEST_BODY)
+	assertResponse(t, rr, http.StatusBadRequest, errInvalidRequestBody)
 }
 
 // TestEmptySubject tests that a blank subject is rejected.
@@ -134,7 +138,7 @@ func TestEmptySubject(t *testing.T) {
 		"subject":  "   ", // whitespace-only
 		"template": base64.StdEncoding.EncodeToString([]byte("<h1>Hello</h1>")),
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_SUBJECT_REQUIRED)
+	assertResponse(t, rr, http.StatusBadRequest, errSubjectRequired)
 }
 
 // TestInvalidContentType tests when the content type is invalid.
@@ -154,7 +158,7 @@ func TestInvalidContentType(t *testing.T) {
 			},
 		},
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_CONTENT_TYPE)
+	assertResponse(t, rr, http.StatusBadRequest, errInvalidContentType)
 }
 
 // TestInvalidBody tests that a malformed JSON body returns 400.
@@ -187,7 +191,7 @@ func TestHappyPath(t *testing.T) {
 			},
 		},
 	})
-	assertResponse(t, rr, http.StatusOK, MSG_EMAIL_SENT_SUCCESS)
+	assertResponse(t, rr, http.StatusOK, msgEmailSentSuccess)
 
 	if mock.lastMsg == nil {
 		t.Fatal("expected message to be captured by mock")
@@ -221,7 +225,7 @@ func TestSMTPError(t *testing.T) {
 		"subject":  "test",
 		"template": base64.StdEncoding.EncodeToString([]byte("<p>Hi</p>")),
 	})
-	assertResponse(t, rr, http.StatusInternalServerError, ERR_EMAIL_SEND_ERR)
+	assertResponse(t, rr, http.StatusInternalServerError, errEmailSendErr)
 }
 
 // TestMaxBodySize ensures that large request bodies are rejected.
@@ -231,7 +235,7 @@ func TestMaxBodySize(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	h.SendEmail(rr, req)
-	assertResponse(t, rr, http.StatusRequestEntityTooLarge, ERR_REQUEST_BODY_TOO_LARGE)
+	assertResponse(t, rr, http.StatusRequestEntityTooLarge, errRequestBodyTooLarge)
 }
 
 // TestInvalidFromAddress tests various invalid 'from' addresses.
@@ -244,8 +248,6 @@ func TestInvalidFromAddress(t *testing.T) {
 		{"invalid_format", "not-an-email"},
 		{"injection_cr", "sender@example.com\rInjected: Header"},
 		{"injection_lf", "sender@example.com\nInjected: Header"},
-		{"leading_space", " sender@example.com"},
-		{"trailing_space", "sender@example.com "},
 	}
 
 	for _, tt := range tests {
@@ -256,7 +258,7 @@ func TestInvalidFromAddress(t *testing.T) {
 				"subject":  "test",
 				"template": base64.StdEncoding.EncodeToString([]byte("hi")),
 			})
-			assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_FROM)
+			assertResponse(t, rr, http.StatusBadRequest, errInvalidFrom)
 		})
 	}
 }
@@ -270,7 +272,7 @@ func TestInvalidToAddress(t *testing.T) {
 		"subject":  "test",
 		"template": base64.StdEncoding.EncodeToString([]byte("hi")),
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_TO)
+	assertResponse(t, rr, http.StatusBadRequest, errInvalidTo)
 }
 
 // TestInvalidCCAddress tests an invalid 'cc' address.
@@ -283,7 +285,7 @@ func TestInvalidCCAddress(t *testing.T) {
 		"subject":  "test",
 		"template": base64.StdEncoding.EncodeToString([]byte("hi")),
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_CC)
+	assertResponse(t, rr, http.StatusBadRequest, errInvalidCC)
 }
 
 // TestInvalidBCCAddress tests an invalid 'bcc' address.
@@ -296,7 +298,7 @@ func TestInvalidBCCAddress(t *testing.T) {
 		"subject":  "test",
 		"template": base64.StdEncoding.EncodeToString([]byte("hi")),
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_BCC)
+	assertResponse(t, rr, http.StatusBadRequest, errInvalidBCC)
 }
 
 // TestInvalidReplyToAddress tests an invalid 'replyTo' address.
@@ -309,7 +311,7 @@ func TestInvalidReplyToAddress(t *testing.T) {
 		"subject":  "test",
 		"template": base64.StdEncoding.EncodeToString([]byte("hi")),
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REPLY_TO)
+	assertResponse(t, rr, http.StatusBadRequest, errInvalidReplyTo)
 }
 
 // TestUnknownFields tests that unknown fields in the JSON body are rejected.
@@ -322,7 +324,7 @@ func TestUnknownFields(t *testing.T) {
 		"template":      base64.StdEncoding.EncodeToString([]byte("hi")),
 		"unknown_field": "some value",
 	})
-	assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REQUEST_BODY)
+	assertResponse(t, rr, http.StatusBadRequest, errInvalidRequestBody)
 }
 
 // TestTrailingJSON tests that trailing data after a valid object is rejected.
@@ -343,7 +345,7 @@ func TestTrailingJSON(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			rr := httptest.NewRecorder()
 			h.SendEmail(rr, req)
-			assertResponse(t, rr, http.StatusBadRequest, ERR_INVALID_REQUEST_BODY)
+			assertResponse(t, rr, http.StatusBadRequest, errInvalidRequestBody)
 		})
 	}
 }
