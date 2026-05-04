@@ -225,7 +225,7 @@ func TestSMTPError(t *testing.T) {
 		"subject":  "test",
 		"template": base64.StdEncoding.EncodeToString([]byte("<p>Hi</p>")),
 	})
-	assertResponse(t, rr, http.StatusInternalServerError, errEmailSendErr)
+	assertResponse(t, rr, http.StatusInternalServerError, errEmailSend)
 }
 
 // TestMaxBodySize ensures that large request bodies are rejected.

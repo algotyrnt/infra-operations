@@ -149,8 +149,8 @@ func (h *EmailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.client.SendEmail(r.Context(), outMsg); err != nil {
-		slog.Error(errEmailSendErr, "error", err)
-		writeJSON(w, http.StatusInternalServerError, ResponseMessage{Message: errEmailSendErr})
+		slog.Error(errEmailSend, "error", err)
+		writeJSON(w, http.StatusInternalServerError, ResponseMessage{Message: errEmailSend})
 		return
 	}
 

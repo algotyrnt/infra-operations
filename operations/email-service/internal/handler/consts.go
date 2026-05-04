@@ -36,7 +36,7 @@ const (
 	errInvalidContentType = "unsupported attachment content type"
 
 	// Email send outcomes.
-	errEmailSendErr     = "failed to send email"
+	errEmailSend        = "failed to send email"
 	msgEmailSentSuccess = "email sent successfully"
 
 	// Health-check status values.

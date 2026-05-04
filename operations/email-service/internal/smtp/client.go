@@ -143,7 +143,9 @@ func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) 
 		}
 	}
 	stop := context.AfterFunc(ctx, func() {
-		conn.SetDeadline(time.Now()) //nolint:errcheck
+		// Ignore error: we only care about interrupting blocked I/O on context
+		// cancellation. If SetDeadline fails, the connection is likely dead.
+		conn.SetDeadline(time.Now())
 	})
 
 	sc, err := smtp.NewClient(conn, c.cfg.Hostname)
@@ -182,11 +184,11 @@ func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) 
 // every liveness probe. It performs a full handshake on cache miss.
 func (c *Client) Ping(ctx context.Context) error {
 	c.healthMu.Lock()
+	defer c.healthMu.Unlock()
+
 	if time.Since(c.lastHealthy) < defaultHealthTTL {
-		c.healthMu.Unlock()
 		return nil
 	}
-	c.healthMu.Unlock()
 
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
@@ -200,10 +202,7 @@ func (c *Client) Ping(ctx context.Context) error {
 	}
 	defer cleanup()
 
-	c.healthMu.Lock()
 	c.lastHealthy = time.Now()
-	c.healthMu.Unlock()
-
 	return nil
 }
 
