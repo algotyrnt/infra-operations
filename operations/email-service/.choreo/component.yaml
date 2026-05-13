@@ -7,5 +7,5 @@ endpoints:
       port: 9090
     type: REST
     networkVisibilities:
-      - Public
+      - Organization
     schemaFilePath: openapi.yaml
