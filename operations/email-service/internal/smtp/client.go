@@ -138,20 +138,20 @@ func (c *Client) dialAndAuth(ctx context.Context) (*smtp.Client, func(), error) 
 
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := conn.SetDeadline(deadline); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, nil, fmt.Errorf("set connection deadline: %w", err)
 		}
 	}
 	stop := context.AfterFunc(ctx, func() {
 		// Ignore error: we only care about interrupting blocked I/O on context
 		// cancellation. If SetDeadline fails, the connection is likely dead.
-		conn.SetDeadline(time.Now())
+		_ = conn.SetDeadline(time.Now())
 	})
 
 	sc, err := smtp.NewClient(conn, c.cfg.Hostname)
 	if err != nil {
 		stop()
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, fmt.Errorf(errFmtNewClient, err)
 	}
 
@@ -273,7 +273,7 @@ func (c *Client) SendEmail(ctx context.Context, msg *Message) error {
 		return fmt.Errorf(errFmtData, err)
 	}
 	if _, err = wc.Write(raw); err != nil {
-		wc.Close()
+		_ = wc.Close()
 		return fmt.Errorf(errFmtWriteBody, err)
 	}
 	return wc.Close()
