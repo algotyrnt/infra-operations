@@ -25,4 +25,4 @@ jobs:
             - name: Run Gosec
               uses: securego/gosec@v2.21.4
               with:
-                  args: "-fmt=golint ./..."
+                  args: "-fmt=golint ./operations/email-service/..."
