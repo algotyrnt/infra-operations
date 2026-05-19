@@ -1,0 +1,28 @@
+name: Gosec Check - Email Service
+
+on:
+    pull_request:
+        paths:
+            - "operations/email-service/**"
+
+jobs:
+    security-scan:
+        name: Gosec Security Scan
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: "operations/email-service"
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Set up Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version-file: "operations/email-service/go.mod"
+
+            - name: Run Gosec
+              uses: securego/gosec@master
+              with:
+                  args: "-fmt=golint ./..."

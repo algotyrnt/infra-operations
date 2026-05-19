@@ -1,29 +1,9 @@
 openapi: 3.0.3
 info:
-  title: Email Service API
-  description: A microservice to dispatch emails via SMTP and check SMTP server connectivity.
+  title: Email Service API - Send Email
+  description: Dispatches an email using the configured SMTP server. Supports base64 encoded HTML templates and attachments.
   version: 1.0.0
 paths:
-  /health-check:
-    get:
-      summary: Health check endpoint
-      description: Pings the upstream SMTP server to confirm connectivity and health status.
-      responses:
-        '200':
-          description: Service is healthy and SMTP connectivity is successful.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthResponse'
-        '405':
-          description: Method Not Allowed
-        '503':
-          description: Service is unhealthy (SMTP server is unreachable).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthResponse'
-
   /send-email:
     post:
       summary: Send an email
@@ -64,17 +44,6 @@ paths:
 
 components:
   schemas:
-    HealthResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [healthy, unhealthy]
-          description: The health status ('healthy' or 'unhealthy')
-          example: healthy
-      required:
-        - status
-
     ResponseMessage:
       type: object
       properties:

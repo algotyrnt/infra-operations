@@ -185,6 +185,7 @@ func envOrDefaultInt64(env map[string]string, key string, defaultValue int64) in
 // loadDotEnv reads KEY=VALUE pairs from the named file.
 func loadDotEnv(filename string) (map[string]string, error) {
 	env := make(map[string]string)
+	// #nosec G304 -- Loading a specific safe dotenv file.
 	f, err := os.Open(filename)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

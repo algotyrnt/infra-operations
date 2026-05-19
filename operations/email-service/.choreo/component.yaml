@@ -1,11 +1,21 @@
 schemaVersion: 1.2
 endpoints:
-  - name: email-service
-    displayName: Email Service
+  - name: email-service-health-check
+    displayName: Email Service Health Check
+    service:
+      basePath: /
+      port: 9090
+    type: REST
+    networkVisibilities:
+      - Public
+    schemaFilePath: openapi-health-check.yaml
+
+  - name: email-service-send-email
+    displayName: Email Service Send Email
     service:
       basePath: /
       port: 9090
     type: REST
     networkVisibilities:
       - Organization
-    schemaFilePath: openapi.yaml
+    schemaFilePath: openapi-send-email.yaml
